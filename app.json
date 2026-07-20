@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Recon Opus Floor Pilot",
+    "slug": "recon-opus-floor-pilot",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#080A0D",
+    "ios": { "supportsTablet": true },
+    "android": { "adaptiveIcon": { "backgroundColor": "#080A0D" } }
+  }
+}
