@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Department, Vehicle } from '../types';
 import { colors } from '../theme/colors';
+import { BackToFloorButton } from './BackToFloorButton';
 
 type Props = {
   department: Department;
@@ -8,10 +9,12 @@ type Props = {
   scrollOffset: number;
   onScrollOffsetChange: (offset: number) => void;
   onVehiclePress: (vehicle: Vehicle) => void;
+  onBackToFloor: () => void;
 };
 
-export function RevisionQueuePage({ department, width, scrollOffset, onScrollOffsetChange, onVehiclePress }: Props) {
-  return <View style={[styles.page, { width }]}>
+export function RevisionQueuePage({ department, width, scrollOffset, onScrollOffsetChange, onVehiclePress, onBackToFloor }: Props) {
+  return <View style={[styles.page, { width }]}> 
+    <BackToFloorButton onPress={onBackToFloor} />
     <View style={styles.header}>
       <Text style={styles.kicker}>REVISION REVIEW QUEUE</Text>
       <View style={styles.titleRow}><Text style={styles.title}>Production Exceptions</Text><View style={styles.count}><Text style={styles.countText}>{department.vehicles.length}</Text></View></View>

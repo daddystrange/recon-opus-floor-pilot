@@ -16,7 +16,7 @@ export type VehicleTimerState = { category: VehicleTimeCategory; categoryStarted
 
 export type VehicleHistoryEvent = {
   id: string;
-  type: 'phase_completed' | 'revision_requested' | 'revision_resolved' | 'production_closed' | 'archived';
+  type: 'phase_completed' | 'revision_requested' | 'revision_resolved' | 'exception_started' | 'exception_completed' | 'production_closed' | 'archived';
   occurredAt: number;
   fromDepartment?: DepartmentName;
   toDepartment?: DepartmentName;
@@ -52,6 +52,8 @@ export type Vehicle = {
     requestedAt: number;
   };
   revisionHistory?: RevisionHistoryEntry[];
+  activeException?: ProductionExceptionRecord;
+  exceptionHistory?: ProductionExceptionRecord[];
 };
 
 export type RevisionReason =
@@ -71,6 +73,21 @@ export type RevisionHistoryEntry = {
   destinationStatus: string;
   resolutionNote: string;
   resolvedAt: number;
+};
+
+export type ProductionExceptionRecord = {
+  id: string;
+  originDepartment: ProductionDepartmentName;
+  originStatus: string;
+  originStatusColor: string;
+  receivingDepartment: ProductionDepartmentName;
+  reason: RevisionReason;
+  notes: string;
+  correctiveTask: string;
+  createdAt: number;
+  active: boolean;
+  resolvedAt?: number;
+  completedBy?: string;
 };
 
 export type Department = {

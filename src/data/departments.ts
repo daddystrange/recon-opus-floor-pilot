@@ -1,4 +1,4 @@
-import { Department, ProductionDepartmentName, Vehicle } from '../types';
+import { Department, ProductionDepartmentName, RevisionReason, Vehicle } from '../types';
 
 const statusColors: Record<string, string> = {
   Prep: '#3B82F6', Prime: '#8B5CF6', Block: '#F59E0B', 'Next in Booth': '#EF4444',
@@ -14,6 +14,7 @@ const statusColors: Record<string, string> = {
   'Inspection Complete': '#22C55E', 'Ready for Parts Hold': '#14B8A6', 'Parts Being Identified': '#64748B',
   'Parts Ordered': '#3B82F6', 'Partial Parts Received': '#8B5CF6', 'Waiting on Critical Parts': '#EF4444',
   'Parts Complete': '#22C55E', 'Released to Body': '#14B8A6',
+  'Panel Alignment': '#F59E0B',
 };
 
 export const getStatusColor = (status: string) => statusColors[status] ?? '#64748B';
@@ -28,6 +29,13 @@ const vehicle = (id: string, year: number, make: string, model: string, color: s
   history: [],
 });
 
+const exceptionVehicle = (id: string, year: number, make: string, model: string, color: string, stockNumber: string, receivingDepartment: ProductionDepartmentName, originDepartment: ProductionDepartmentName, originStatus: string, reason: RevisionReason, correctiveTask: string, location: string, elapsedMinutes: number, notes: string): Omit<Vehicle, 'department'> => {
+  const createdAt = Date.now() - elapsedMinutes * 60 * 1000;
+  const base = vehicle(id, year, make, model, color, stockNumber, correctiveTask, location, `${elapsedMinutes} min`);
+  const productionException = { id: `sample-${id}`, originDepartment, originStatus, originStatusColor: getStatusColor(originStatus), receivingDepartment, reason, notes, correctiveTask, createdAt, active: true };
+  return { ...base, stageStartedAt: createdAt, timerState: { ...base.timerState, category: 'revision_hold', categoryStartedAt: createdAt }, activeException: productionException, exceptionHistory: [productionException], history: [{ id: `exception-started-${id}`, type: 'exception_started', occurredAt: createdAt, fromDepartment: originDepartment, toDepartment: receivingDepartment, status: correctiveTask, note: reason }] };
+};
+
 const departmentData = [
   { name: 'Arrival & Inspection', shortName: 'Arrival & Inspection', statusOptions: ['Received', 'VIN Scanned', 'Pre-Work Inspection', 'Blueprinting', 'Inspection Complete', 'Ready for Parts Hold'], vehicles: [
     vehicle('a1', 2024, 'Ford', 'F-150 Lariat', 'Agate Black', 'A-1042', 'Received', 'Intake lane 2', '18 min'),
@@ -41,6 +49,7 @@ const departmentData = [
     vehicle('b1', 2022, 'Chevrolet', 'Tahoe LT', 'Summit White', 'B-0831', 'Repair', 'Body stall 4', '2 hr 16 min', true),
     vehicle('b2', 2024, 'Toyota', 'Camry XSE', 'Midnight Black', 'B-0844', 'Repair', 'Body stall 7', '54 min'),
     vehicle('b3', 2021, 'Jeep', 'Grand Cherokee', 'Velvet Red', 'B-0822', 'Repair', 'Frame bay', '4 hr 08 min'),
+    exceptionVehicle('ex3', 2023, 'Ford', 'Explorer ST', 'Carbonized Gray', 'EX-3103', 'Body', 'Reassembly', 'Final Fit', 'Additional Body Work Needed', 'Panel Alignment', 'Body stall 2', 37, 'Align left front fender and hood gaps.'),
   ]},
   { name: 'Paint', shortName: 'Paint', statusOptions: ['Prep', 'Prime', 'Block', 'Next in Booth', 'Ready to Buff', 'Denib and Polish'], vehicles: [
     vehicle('p1', 2024, 'BMW', 'X5 xDrive40i', 'Alpine White', 'P-2418', 'Next in Booth', 'Booth queue', '12 min', true),
@@ -49,6 +58,7 @@ const departmentData = [
     vehicle('p4', 2024, 'GMC', 'Sierra 1500 Denali', 'Onyx Black', 'P-2421', 'Block', 'Prep deck 5', '2 hr 06 min'),
     vehicle('p5', 2021, 'Mercedes-Benz', 'GLE 350', 'Polar White', 'P-2368', 'Ready to Buff', 'Finish bay 2', '27 min'),
     vehicle('p6', 2023, 'Audi', 'Q7 Premium Plus', 'Navarra Blue', 'P-2404', 'Denib and Polish', 'Finish bay 4', '49 min'),
+    exceptionVehicle('ex1', 2022, 'Mazda', 'CX-5 Signature', 'Soul Red', 'EX-3101', 'Paint', 'Quality Control', 'Inspect', 'Paint Defect', 'Denib and Polish', 'Finish bay 1', 24, 'Dirt nib found on left quarter during QC.'),
   ]},
   { name: 'Reassembly', shortName: 'Reassembly', statusOptions: ['Ready for Reassembly', 'Parts Check', 'Assemble', 'Final Fit'], vehicles: [
     vehicle('r1', 2023, 'Ram', '1500 Limited', 'Granite Crystal', 'R-1820', 'Assemble', 'Assembly 2', '1 hr 22 min'),
@@ -62,6 +72,7 @@ const departmentData = [
   { name: 'Quality Control', shortName: 'QC', statusOptions: ['Awaiting QC', 'Inspect', 'Needs Correction', 'Passed'], vehicles: [
     vehicle('q1', 2024, 'Volvo', 'XC90 Recharge', 'Crystal White', 'Q-0518', 'Inspect', 'QC lane 1', '24 min', true),
     vehicle('q2', 2023, 'Kia', 'Telluride SX', 'Wolf Gray', 'Q-0514', 'Inspect', 'QC lane 2', '41 min'),
+    exceptionVehicle('ex2', 2024, 'Genesis', 'GV80', 'Vik Black', 'EX-3102', 'Quality Control', 'Paint', 'Ready to Buff', 'Other', 'Inspect', 'QC lane 3', 18, 'Verify finish quality before Paint releases the vehicle.'),
   ]},
   { name: 'Delivery', shortName: 'Delivery', statusOptions: ['Ready for Delivery', 'Staged', 'Ready', 'Delivered'], vehicles: [
     vehicle('v1', 2023, 'Porsche', 'Cayenne', 'Moonlight Blue', 'DL-311', 'Ready', 'Delivery row A', '16 min'),

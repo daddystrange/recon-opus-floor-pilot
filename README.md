@@ -15,6 +15,7 @@ This first version is deliberately focused: all vehicle data is local sample dat
 - One-tap phase completion that always advances to the next production department
 - Predefined revision requests stored in a session-only Manager Review Queue
 - Production Exceptions queue with optional technician notes and live count
+- Vehicle-level corrective-work exceptions that remain separate from normal department flow and automatically return to their originating department
 - Prototype revision review with controlled destination status and resolution history
 - Explicit Active Production, Revision Needed, Completed, and Archived lifecycle states
 - Separate active-production, parts-hold, and revision-hold timer categories

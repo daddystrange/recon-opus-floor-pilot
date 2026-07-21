@@ -11,14 +11,16 @@ type Props = {
   onCompletePhase: (destination: ProductionDepartmentName) => void;
   onRequestRevision: () => void;
   onCloseProduction: () => void;
+  onCompleteException: () => void;
 };
 
-export function VehicleDetailView({ department, vehicle, onClose, onCompletePhase, onRequestRevision, onCloseProduction }: Props) {
+export function VehicleDetailView({ department, vehicle, onClose, onCompletePhase, onRequestRevision, onCloseProduction, onCompleteException }: Props) {
   const insets = useSafeAreaInsets();
   if (!vehicle || !department || department.name === 'Revision Needed') return null;
 
   const currentIndex = productionSequence.indexOf(department.name);
   const nextDepartment = productionSequence[currentIndex + 1];
+  const productionException = vehicle.activeException?.active ? vehicle.activeException : null;
 
   const requestCompletion = () => {
     if (!nextDepartment) return;
@@ -32,6 +34,7 @@ export function VehicleDetailView({ department, vehicle, onClose, onCompletePhas
     );
   };
   const requestCloseProduction = () => Alert.alert('Close Production', `Close production for ${vehicle.make} ${vehicle.model}?`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Confirm', onPress: onCloseProduction }]);
+  const requestExceptionCompletion = () => productionException && Alert.alert('Complete Production Exception', `Complete corrective work and return ${vehicle.make} ${vehicle.model} to ${productionException.originDepartment}?`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Confirm Return', onPress: onCompleteException }]);
 
   return (
     <Modal visible animationType="slide" presentationStyle="fullScreen" statusBarTranslucent={false} onRequestClose={onClose}>
@@ -40,10 +43,11 @@ export function VehicleDetailView({ department, vehicle, onClose, onCompletePhas
           <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={`Back to ${department.name} Department`} accessibilityHint="Returns to the same position in the department queue" hitSlop={8} style={({ pressed }) => [styles.close, pressed && styles.pressed]}>
             <Text style={styles.closeIcon}>‹</Text><Text style={styles.closeText}>Back to {department.name} Department</Text>
           </Pressable>
-          <Text style={styles.topTitle}>VEHICLE DETAIL</Text>
+          <View style={styles.topTitleArea} pointerEvents="none"><Text style={styles.topTitle}>VEHICLE DETAIL</Text></View>
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={styles.departmentHeading}>{department.name.toUpperCase()}</Text>
           <Text style={styles.eyebrow}>{vehicle.year} · {vehicle.color.toUpperCase()}</Text>
           <Text style={styles.title}>{vehicle.make}</Text>
           <Text style={styles.model}>{vehicle.model}</Text>
@@ -61,12 +65,14 @@ export function VehicleDetailView({ department, vehicle, onClose, onCompletePhas
             <Info label="PRIORITY" value={vehicle.priority ? 'Yes' : 'Standard'} />
           </View>
 
+          {productionException && <View style={styles.exceptionSummary}><Text style={styles.exceptionKicker}>PRODUCTION EXCEPTION</Text><InfoLine label="ORIGINATING DEPARTMENT" value={productionException.originDepartment} /><InfoLine label="REASON" value={productionException.reason} /><InfoLine label="CORRECTIVE TASK" value={productionException.correctiveTask} /></View>}
+
           <View style={styles.workflowHeader}>
-            <Text style={styles.sectionTitle}>Production action</Text>
-            <Text style={styles.sectionHint}>One direction. Complete the phase or request review.</Text>
+            <Text style={styles.sectionTitle}>{productionException ? 'Corrective work' : 'Production action'}</Text>
+            <Text style={styles.sectionHint}>{productionException ? `Returns automatically to ${productionException.originDepartment}.` : 'One direction. Complete the phase or request review.'}</Text>
           </View>
 
-          {nextDepartment ? (
+          {productionException ? <Pressable onPress={requestExceptionCompletion} accessibilityRole="button" style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}><View style={styles.primaryIcon}><Text style={styles.primaryIconText}>↩</Text></View><View style={styles.actionCopy}><Text style={styles.primaryTitle}>Complete and Return</Text><Text style={styles.primarySubtitle}>Return to {productionException.originDepartment}</Text></View><Text style={styles.primaryChevron}>›</Text></Pressable> : nextDepartment ? (
             <Pressable onPress={requestCompletion} accessibilityRole="button" style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}>
               <View style={styles.primaryIcon}><Text style={styles.primaryIconText}>→</Text></View>
               <View style={styles.actionCopy}><Text style={styles.primaryTitle}>Complete Current Phase</Text><Text style={styles.primarySubtitle}>Send to {nextDepartment}</Text></View>
@@ -76,11 +82,11 @@ export function VehicleDetailView({ department, vehicle, onClose, onCompletePhas
             <Pressable onPress={requestCloseProduction} accessibilityRole="button" style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}><View style={styles.primaryIcon}><Text style={styles.primaryIconText}>✓</Text></View><View style={styles.actionCopy}><Text style={styles.primaryTitle}>Close Production</Text><Text style={styles.primarySubtitle}>Move to 30-day operational history</Text></View><Text style={styles.primaryChevron}>›</Text></Pressable>
           )}
 
-          <Pressable onPress={onRequestRevision} accessibilityRole="button" style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
+          {!productionException && <Pressable onPress={onRequestRevision} accessibilityRole="button" style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
             <View style={styles.secondaryIcon}><Text style={styles.secondaryIconText}>!</Text></View>
             <View style={styles.actionCopy}><Text style={styles.secondaryTitle}>Request Revision</Text><Text style={styles.secondarySubtitle}>Send an exception to manager review</Text></View>
             <Text style={styles.secondaryChevron}>›</Text>
-          </Pressable>
+          </Pressable>}
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -91,15 +97,21 @@ function Info({ label, value }: { label: string; value: string }) {
   return <View style={styles.info}><Text style={styles.infoLabel}>{label}</Text><Text style={styles.infoValue}>{value}</Text></View>;
 }
 
+function InfoLine({ label, value }: { label: string; value: string }) {
+  return <View style={styles.exceptionLine}><Text style={styles.exceptionLabel}>{label}</Text><Text style={styles.exceptionValue}>{value}</Text></View>;
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   topBar: { minHeight: 62, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border },
-  close: { flex: 1, minHeight: 52, flexDirection: 'row', alignItems: 'center', paddingRight: 12 },
+  close: { flex: 1.4, minHeight: 52, flexDirection: 'row', alignItems: 'center', paddingRight: 8 },
   closeIcon: { color: colors.accent, fontSize: 36, lineHeight: 38, marginRight: 5 },
   closeText: { flexShrink: 1, color: colors.text, fontSize: 13, fontWeight: '800' },
-  topTitle: { color: colors.muted, textAlign: 'right', fontSize: 10, fontWeight: '900', letterSpacing: 1.8 },
+  topTitleArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  topTitle: { color: colors.muted, textAlign: 'center', fontSize: 10, fontWeight: '900', letterSpacing: 1.8 },
   content: { padding: 20, paddingBottom: 44 },
-  eyebrow: { color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 1.5, marginTop: 4, marginBottom: 8 },
+  departmentHeading: { color: colors.accent, fontSize: 17, lineHeight: 22, fontWeight: '900', letterSpacing: 2.2, marginTop: 3, marginBottom: 13 },
+  eyebrow: { color: colors.muted, fontSize: 11, fontWeight: '900', letterSpacing: 1.5, marginBottom: 8 },
   title: { color: colors.text, fontSize: 35, fontWeight: '900', letterSpacing: -1 },
   model: { color: '#C9CED4', fontSize: 25, fontWeight: '700', marginTop: 1 },
   currentStatus: { backgroundColor: colors.panelRaised, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 6, borderRadius: 14, padding: 18, marginTop: 22 },
@@ -112,6 +124,7 @@ const styles = StyleSheet.create({
   info: { width: '50%', padding: 12 },
   infoLabel: { color: colors.subtle, fontSize: 9, fontWeight: '900', letterSpacing: 1.1, marginBottom: 5 },
   infoValue: { color: '#D6DADE', fontSize: 13, fontWeight: '700' },
+  exceptionSummary: { marginTop: 14, padding: 16, backgroundColor: '#1D1A14', borderWidth: 1, borderColor: '#5B4820', borderLeftWidth: 5, borderLeftColor: '#D99A2B', borderRadius: 13 }, exceptionKicker: { color: '#E8B44F', fontSize: 9, fontWeight: '900', letterSpacing: 1.1, marginBottom: 10 }, exceptionLine: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 7 }, exceptionLabel: { width: 122, color: colors.subtle, fontSize: 8, lineHeight: 13, fontWeight: '900', letterSpacing: 0.7 }, exceptionValue: { flex: 1, color: '#D8C69F', fontSize: 12, lineHeight: 16, fontWeight: '800' },
   workflowHeader: { marginTop: 30, marginBottom: 13 },
   sectionTitle: { color: colors.text, fontSize: 20, fontWeight: '900' },
   sectionHint: { color: colors.muted, fontSize: 12, marginTop: 4 },

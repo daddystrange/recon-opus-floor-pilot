@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
-import { Pressable, StatusBar, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Alert, Pressable, StatusBar, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { DepartmentPage } from './src/components/DepartmentPage';
 import { VehicleDetailView } from './src/components/VehicleDetailView';
@@ -9,17 +9,18 @@ import { RevisionQueuePage } from './src/components/RevisionQueuePage';
 import { RevisionReviewScreen } from './src/components/RevisionReviewScreen';
 import { ProductionFloorScreen } from './src/components/ProductionFloorScreen';
 import { VehicleHistoryScreen } from './src/components/VehicleHistoryScreen';
+import { EntranceScreen } from './src/components/EntranceScreen';
 import { defaultStartingStatuses, departments as initialDepartments, getStatusColor, productionSequence } from './src/data/departments';
 import { colors } from './src/theme/colors';
 import { DepartmentName, ProductionDepartmentName, RevisionReason, Vehicle } from './src/types';
-import { closeProduction, partitionCompleted, recordPhaseMove, resolveRevisionLifecycle, sendToRevision } from './src/domain/vehicleLifecycle';
+import { closeProduction, completeProductionException, partitionCompleted, recordPhaseMove, sendToRevision, startProductionException } from './src/domain/vehicleLifecycle';
 import { FacilityMovement } from './src/domain/facilityGeometry';
 
 export default function App() {
   const { width } = useWindowDimensions();
   const scrollPositions = useRef<Partial<Record<DepartmentName, number>>>({});
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [screen, setScreen] = useState<{ kind: 'floor' } | { kind: 'department'; name: ProductionDepartmentName } | { kind: 'revision' } | { kind: 'history' }>({ kind: 'floor' });
+  const [screen, setScreen] = useState<{ kind: 'entrance' } | { kind: 'floor' } | { kind: 'department'; name: ProductionDepartmentName } | { kind: 'revision' } | { kind: 'history' }>({ kind: 'entrance' });
   const [departments, setDepartments] = useState(initialDepartments);
   const [selected, setSelected] = useState<{ departmentIndex: number; vehicleId: string } | null>(null);
   const [moveSheetSelection, setMoveSheetSelection] = useState<{ departmentIndex: number; vehicleId: string; initialMode: 'actions' | 'revision' } | null>(null);
@@ -64,6 +65,14 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   };
 
+  const completeFacilityMovement = useCallback((movementId: number) => {
+    setLastMovement((current) => current?.id === movementId ? null : current);
+  }, []);
+
+  const finishVehicleAction = useCallback(() => {
+    setScreen({ kind: 'floor' });
+  }, []);
+
   const commitVehicleMove = (sourceIndex: number, vehicleId: string, destination: ProductionDepartmentName) => {
     const sourceVehicle = departments[sourceIndex]?.vehicles.find(({ id }) => id === vehicleId);
     if (!sourceVehicle) return;
@@ -84,13 +93,13 @@ export default function App() {
       });
     });
 
-    const sourceName = departments[sourceIndex]?.name;
-    if (sourceName && sourceName !== 'Revision Needed') setScreen({ kind: 'department', name: sourceName });
+    finishVehicleAction();
     showSuccess(`✓ ${sourceVehicle.make} ${sourceVehicle.model} sent to ${destination}`);
   };
 
   const completePhaseFromDetail = (destination: ProductionDepartmentName) => {
     if (!selected) return;
+    if (selectedVehicle?.activeException?.active) { Alert.alert('Production Exception Active', 'Complete the current corrective work before starting another workflow action.'); return; }
     const direction: -1 | 1 = 1;
     setExitingMove({ sourceIndex: selected.departmentIndex, vehicleId: selected.vehicleId, destination, direction });
     setSelected(null);
@@ -99,11 +108,13 @@ export default function App() {
 
   const requestRevisionFromDetail = () => {
     if (!selected) return;
+    if (selectedVehicle?.activeException?.active) { Alert.alert('Production Exception Active', 'This vehicle already has active corrective work. Complete it before requesting another exception.'); return; }
     setMoveSheetSelection({ ...selected, initialMode: 'revision' });
     setSelected(null);
   };
 
   const openMoveSheet = (vehicle: Vehicle) => {
+    if (vehicle.activeException?.active) { Alert.alert('Production Exception Active', 'Open the vehicle and complete its corrective work before moving it.'); return; }
     const departmentIndex = departments.findIndex(({ vehicles }) => vehicles.some(({ id }) => id === vehicle.id));
     if (departmentIndex < 0) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -126,6 +137,7 @@ export default function App() {
   const createRevisionRequest = (reason: RevisionReason, notes: string) => {
     if (!moveSheetSelection || !moveSheetVehicle || !moveSheetDepartment) return;
     if (moveSheetDepartment.name === 'Revision Needed') return;
+    if (moveSheetVehicle.activeException?.active) { setMoveSheetSelection(null); Alert.alert('Production Exception Active', 'Only one production exception may be active for a vehicle.'); return; }
     const sourceIndex = moveSheetSelection.departmentIndex;
     const vehicleId = moveSheetVehicle.id;
     const requestedAt = Date.now();
@@ -136,6 +148,7 @@ export default function App() {
       return department;
     }));
     setMoveSheetSelection(null);
+    finishVehicleAction();
     showSuccess('Revision requested — vehicle sent to Production Exceptions');
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
@@ -144,12 +157,13 @@ export default function App() {
     const revision = revisionReviewVehicle?.activeRevision;
     if (!revisionReviewVehicle || !revision || revisionDepartmentIndex < 0) return;
     const vehicle = revisionReviewVehicle;
-    setLastMovement({ id: Date.now(), from: 'revision', to: destination });
+    if (vehicle.activeException?.active) { Alert.alert('Production Exception Active', 'Resolve the current exception before assigning another one.'); return; }
+    const createdAt = Date.now();
+    setLastMovement({ id: createdAt, from: 'revision', to: destination });
     setDepartments((current) => current.map((department) => {
       if (department.name === 'Revision Needed') return { ...department, vehicles: department.vehicles.filter(({ id }) => id !== vehicle.id) };
       if (department.name === destination) return { ...department, vehicles: [...department.vehicles, {
-        ...resolveRevisionLifecycle(vehicle, destination, status, getStatusColor(status), resolutionNote),
-        activeRevision: undefined,
+        ...startProductionException(vehicle, destination, status, getStatusColor(status), resolutionNote, createdAt),
         revisionHistory: [...(vehicle.revisionHistory ?? []), {
           originalDepartment: revision.originalDepartment,
           reason: revision.reason,
@@ -158,14 +172,35 @@ export default function App() {
           destination,
           destinationStatus: status,
           resolutionNote,
-          resolvedAt: Date.now(),
+          resolvedAt: createdAt,
         }],
       }] };
       return department;
     }));
     setRevisionReviewVehicleId(null);
-    setScreen({ kind: 'revision' });
-    showSuccess(`${vehicle.make} ${vehicle.model} moved to ${destination}`);
+    finishVehicleAction();
+    showSuccess(`${vehicle.make} ${vehicle.model} assigned to ${destination} for corrective work`);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const completeExceptionFromDetail = () => {
+    const productionException = selectedVehicle?.activeException;
+    if (!selected || !selectedVehicle || !productionException?.active) return;
+    const sourceIndex = selected.departmentIndex;
+    const destinationIndex = departments.findIndex(({ name }) => name === productionException.originDepartment);
+    if (destinationIndex < 0) return;
+    const completedAt = Date.now();
+    const returnedVehicle = completeProductionException(selectedVehicle, 'Floor Pilot Technician', completedAt);
+    setLastMovement({ id: completedAt, from: productionException.receivingDepartment, to: productionException.originDepartment });
+    setDepartments((current) => current.map((department, index) => {
+      if (sourceIndex === destinationIndex && index === sourceIndex) return { ...department, vehicles: department.vehicles.map((vehicle) => vehicle.id === selectedVehicle.id ? returnedVehicle : vehicle) };
+      if (index === sourceIndex) return { ...department, vehicles: department.vehicles.filter(({ id }) => id !== selectedVehicle.id) };
+      if (index === destinationIndex) return { ...department, vehicles: [...department.vehicles, returnedVehicle] };
+      return department;
+    }));
+    setSelected(null);
+    finishVehicleAction();
+    showSuccess(`✓ ${selectedVehicle.make} ${selectedVehicle.model} returned to ${productionException.originDepartment}`);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
@@ -184,27 +219,29 @@ export default function App() {
     setDepartments((current) => current.map((department, index) => index === sourceIndex ? { ...department, vehicles: department.vehicles.filter(({ id }) => id !== selectedVehicle.id) } : department));
     setCompletedVehicles((completed) => [...completed, closedVehicle]);
     setSelected(null);
-    setScreen({ kind: 'department', name: 'Delivery' });
+    finishVehicleAction();
     showSuccess(`✓ ${selectedVehicle.make} ${selectedVehicle.model} production closed`);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-        <View style={styles.brandBar}>
-          <View style={styles.brandMark}><View style={styles.markLine} /><View style={[styles.markLine, styles.markLineShort]} /><View style={styles.markLine} /></View>
-          <View><Text style={styles.brand}>RECON OPUS</Text><Text style={styles.brandSub}>FLOOR PILOT</Text></View>
-          <View style={styles.live}><View style={styles.liveDot} /><Text style={styles.liveText}>LOCAL</Text></View>
-        </View>
-        {screen.kind !== 'floor' && <View style={styles.globalNav}>
-          <Pressable onPress={() => setScreen({ kind: 'floor' })} accessibilityRole="tab" accessibilityState={{ selected: screen.kind !== 'revision' }} style={[styles.globalNavItem, screen.kind !== 'revision' && styles.globalNavItemActive]}><Text style={[styles.globalNavText, screen.kind !== 'revision' && styles.globalNavTextActive]}>Production Floor</Text></Pressable>
-          <Pressable onPress={() => setScreen({ kind: 'revision' })} accessibilityRole="tab" accessibilityState={{ selected: screen.kind === 'revision' }} style={[styles.globalNavItem, screen.kind === 'revision' && styles.globalNavItemActive]}><Text style={[styles.globalNavText, screen.kind === 'revision' && styles.globalNavTextActive]}>Production Exceptions</Text><View style={styles.revisionBadge}><Text style={styles.revisionBadgeText}>{revisionDepartment?.vehicles.length ?? 0}</Text></View></Pressable>
-        </View>}
-        <View style={styles.screen}>
-          {screen.kind === 'floor' && <ProductionFloorScreen departments={departments} totalWip={totalWip} revisionCount={revisionDepartment?.vehicles.length ?? 0} movement={lastMovement} onOpenDepartment={openDepartment} onOpenRevisions={() => setScreen({ kind: 'revision' })} onOpenHistory={() => setScreen({ kind: 'history' })} />}
-          {screen.kind === 'revision' && revisionDepartment && <RevisionQueuePage department={revisionDepartment} width={width} scrollOffset={scrollPositions.current['Revision Needed'] ?? 0} onScrollOffsetChange={(offset) => { scrollPositions.current['Revision Needed'] = offset; }} onVehiclePress={(vehicle) => setRevisionReviewVehicleId(vehicle.id)} />}
+      {screen.kind === 'entrance' ? (
+        <EntranceScreen onReplaceWithProductionFloor={() => setScreen({ kind: 'floor' })} />
+      ) : (
+        <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+          <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+          <View style={styles.brandBar}>
+            <View style={styles.brandMark}><View style={styles.markLine} /><View style={[styles.markLine, styles.markLineShort]} /><View style={styles.markLine} /></View>
+            <View><Text style={styles.brand}>RECON OPUS</Text><Text style={styles.brandSub}>FLOOR PILOT</Text></View>
+            <View style={styles.live}><View style={styles.liveDot} /><Text style={styles.liveText}>LOCAL</Text></View>
+          </View>
+          {screen.kind !== 'floor' && <View style={styles.globalNav}>
+            <Pressable onPress={() => setScreen({ kind: 'revision' })} accessibilityRole="tab" accessibilityState={{ selected: screen.kind === 'revision' }} style={[styles.globalNavItem, screen.kind === 'revision' && styles.globalNavItemActive]}><Text style={[styles.globalNavText, screen.kind === 'revision' && styles.globalNavTextActive]}>Production Exceptions</Text><View style={styles.revisionBadge}><Text style={styles.revisionBadgeText}>{revisionDepartment?.vehicles.length ?? 0}</Text></View></Pressable>
+          </View>}
+          <View style={styles.screen}>
+          {screen.kind === 'floor' && <ProductionFloorScreen departments={departments} totalWip={totalWip} revisionCount={revisionDepartment?.vehicles.length ?? 0} movement={lastMovement} onMovementComplete={completeFacilityMovement} onOpenDepartment={openDepartment} onOpenRevisions={() => setScreen({ kind: 'revision' })} onOpenHistory={() => setScreen({ kind: 'history' })} />}
+          {screen.kind === 'revision' && revisionDepartment && <RevisionQueuePage department={revisionDepartment} width={width} scrollOffset={scrollPositions.current['Revision Needed'] ?? 0} onScrollOffsetChange={(offset) => { scrollPositions.current['Revision Needed'] = offset; }} onVehiclePress={(vehicle) => setRevisionReviewVehicleId(vehicle.id)} onBackToFloor={() => setScreen({ kind: 'floor' })} />}
           {screen.kind === 'department' && currentQueue && <DepartmentPage
             department={currentQueue}
             width={width}
@@ -219,14 +256,15 @@ export default function App() {
             onBackToFloor={() => setScreen({ kind: 'floor' })}
           />}
           {screen.kind === 'history' && <VehicleHistoryScreen completed={completedVehicles} archived={archivedVehicles} onBack={() => setScreen({ kind: 'floor' })} />}
-        </View>
-        <VehicleDetailView
+          </View>
+          <VehicleDetailView
           department={selectedDepartment}
           vehicle={selectedVehicle}
           onClose={() => setSelected(null)}
           onCompletePhase={completePhaseFromDetail}
           onRequestRevision={requestRevisionFromDetail}
           onCloseProduction={closeSelectedProduction}
+          onCompleteException={completeExceptionFromDetail}
         />
         <VehicleMoveSheet
           visible={Boolean(moveSheetSelection)}
@@ -243,8 +281,9 @@ export default function App() {
           onClose={() => setRevisionReviewVehicleId(null)}
           onConfirm={resolveRevision}
         />
-        {toast && <View accessibilityRole="alert" style={styles.toast}><View style={styles.toastDot} /><Text style={styles.toastText}>{toast}</Text></View>}
-      </SafeAreaView>
+          {toast && <View accessibilityRole="alert" style={styles.toast}><View style={styles.toastDot} /><Text style={styles.toastText}>{toast}</Text></View>}
+        </SafeAreaView>
+      )}
     </SafeAreaProvider>
   );
 }
