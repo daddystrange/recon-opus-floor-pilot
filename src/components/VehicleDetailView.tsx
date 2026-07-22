@@ -3,6 +3,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { productionSequence } from '../data/departments';
 import { Department, ProductionDepartmentName, Vehicle } from '../types';
 import { colors } from '../theme/colors';
+import { workflowColors } from '../theme/workflowColors';
+import { SubletRequestSection } from './SubletRequestSection';
 
 type Props = {
   department: Department | null;
@@ -10,17 +12,19 @@ type Props = {
   onClose: () => void;
   onCompletePhase: (destination: ProductionDepartmentName) => void;
   onRequestRevision: () => void;
+  onSendToSublet: () => void;
   onCloseProduction: () => void;
   onCompleteException: () => void;
 };
 
-export function VehicleDetailView({ department, vehicle, onClose, onCompletePhase, onRequestRevision, onCloseProduction, onCompleteException }: Props) {
+export function VehicleDetailView({ department, vehicle, onClose, onCompletePhase, onRequestRevision, onSendToSublet, onCloseProduction, onCompleteException }: Props) {
   const insets = useSafeAreaInsets();
   if (!vehicle || !department || department.name === 'Revision Needed') return null;
 
   const currentIndex = productionSequence.indexOf(department.name);
   const nextDepartment = productionSequence[currentIndex + 1];
   const productionException = vehicle.activeException?.active ? vehicle.activeException : null;
+  const departmentColor = workflowColors[department.name];
 
   const requestCompletion = () => {
     if (!nextDepartment) return;
@@ -34,7 +38,7 @@ export function VehicleDetailView({ department, vehicle, onClose, onCompletePhas
     );
   };
   const requestCloseProduction = () => Alert.alert('Close Production', `Close production for ${vehicle.make} ${vehicle.model}?`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Confirm', onPress: onCloseProduction }]);
-  const requestExceptionCompletion = () => productionException && Alert.alert('Complete Production Exception', `Complete corrective work and return ${vehicle.make} ${vehicle.model} to ${productionException.originDepartment}?`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Confirm Return', onPress: onCompleteException }]);
+  const requestExceptionCompletion = () => productionException && onCompleteException();
 
   return (
     <Modal visible animationType="slide" presentationStyle="fullScreen" statusBarTranslucent={false} onRequestClose={onClose}>
@@ -47,7 +51,7 @@ export function VehicleDetailView({ department, vehicle, onClose, onCompletePhas
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={styles.departmentHeading}>{department.name.toUpperCase()}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={[styles.departmentHeading, { color: departmentColor }]}>{department.name.toUpperCase()}</Text>
           <Text style={styles.eyebrow}>{vehicle.year} · {vehicle.color.toUpperCase()}</Text>
           <Text style={styles.title}>{vehicle.make}</Text>
           <Text style={styles.model}>{vehicle.model}</Text>
@@ -72,7 +76,7 @@ export function VehicleDetailView({ department, vehicle, onClose, onCompletePhas
             <Text style={styles.sectionHint}>{productionException ? `Returns automatically to ${productionException.originDepartment}.` : 'One direction. Complete the phase or request review.'}</Text>
           </View>
 
-          {productionException ? <Pressable onPress={requestExceptionCompletion} accessibilityRole="button" style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}><View style={styles.primaryIcon}><Text style={styles.primaryIconText}>↩</Text></View><View style={styles.actionCopy}><Text style={styles.primaryTitle}>Complete and Return</Text><Text style={styles.primarySubtitle}>Return to {productionException.originDepartment}</Text></View><Text style={styles.primaryChevron}>›</Text></Pressable> : nextDepartment ? (
+          {productionException ? <Pressable onPress={requestExceptionCompletion} accessibilityRole="button" style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}><View style={styles.primaryIcon}><Text style={styles.primaryIconText}>✓</Text></View><View style={styles.actionCopy}><Text style={styles.primaryTitle}>Complete Corrective Work</Text><Text style={styles.primarySubtitle}>Choose where this vehicle goes next</Text></View><Text style={styles.primaryChevron}>›</Text></Pressable> : nextDepartment ? (
             <Pressable onPress={requestCompletion} accessibilityRole="button" style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}>
               <View style={styles.primaryIcon}><Text style={styles.primaryIconText}>→</Text></View>
               <View style={styles.actionCopy}><Text style={styles.primaryTitle}>Complete Current Phase</Text><Text style={styles.primarySubtitle}>Send to {nextDepartment}</Text></View>
@@ -87,6 +91,7 @@ export function VehicleDetailView({ department, vehicle, onClose, onCompletePhas
             <View style={styles.actionCopy}><Text style={styles.secondaryTitle}>Request Revision</Text><Text style={styles.secondarySubtitle}>Send an exception to manager review</Text></View>
             <Text style={styles.secondaryChevron}>›</Text>
           </Pressable>}
+          {!productionException && <SubletRequestSection onPress={onSendToSublet} pending={Boolean(vehicle.activeSubletRequest)} />}
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -110,7 +115,7 @@ const styles = StyleSheet.create({
   topTitleArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   topTitle: { color: colors.muted, textAlign: 'center', fontSize: 10, fontWeight: '900', letterSpacing: 1.8 },
   content: { padding: 20, paddingBottom: 44 },
-  departmentHeading: { color: colors.accent, fontSize: 17, lineHeight: 22, fontWeight: '900', letterSpacing: 2.2, marginTop: 3, marginBottom: 13 },
+  departmentHeading: { fontSize: 17, lineHeight: 22, fontWeight: '900', letterSpacing: 2.2, marginTop: 3, marginBottom: 13 },
   eyebrow: { color: colors.muted, fontSize: 11, fontWeight: '900', letterSpacing: 1.5, marginBottom: 8 },
   title: { color: colors.text, fontSize: 35, fontWeight: '900', letterSpacing: -1 },
   model: { color: '#C9CED4', fontSize: 25, fontWeight: '700', marginTop: 1 },
