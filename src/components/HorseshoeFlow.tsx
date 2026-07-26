@@ -56,7 +56,6 @@ export const HorseshoeFlow = memo(function HorseshoeFlow({ reduceMotion, running
         <AnimatedPath d={path} fill="none" stroke="#F2FAFF" strokeWidth={5} strokeLinecap="round" strokeDasharray="36 2277" animatedProps={coreProps} />
       </>}
     </Svg>
-    <View style={[styles.endpoint, styles.entranceEndpoint, { borderColor: workflowColors['Arrival & Inspection'] }]}><View style={[styles.entranceMark, { backgroundColor: workflowColors['Arrival & Inspection'] }]} /><View><Text style={styles.endpointLabel}>ENTRANCE</Text><Text style={styles.endpointHint}>VEHICLES IN</Text></View></View>
     <View style={[styles.endpoint, styles.finishEndpoint, { borderColor: workflowColors.Delivery }]}><View><Text style={[styles.endpointLabel, styles.finishLabel, { color: workflowColors.Delivery }]}>FINISH</Text><Text style={styles.endpointHint}>PRODUCTION OUT</Text></View><Text style={[styles.finishMark, { color: workflowColors.Delivery }]}>✓</Text></View>
   </View>;
 });
@@ -64,8 +63,7 @@ export const HorseshoeFlow = memo(function HorseshoeFlow({ reduceMotion, running
 const styles = StyleSheet.create({
   svg: { ...StyleSheet.absoluteFillObject, zIndex: 1 },
   endpoint: { position: 'absolute', top: '1.2%', minHeight: 31, width: '27%', paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: '#151B21', borderWidth: 1, borderColor: '#394550', borderRadius: 8, zIndex: 5 },
-  entranceEndpoint: { left: '2.2%' }, finishEndpoint: { right: '2.2%', justifyContent: 'flex-end' },
-  entranceMark: { width: 5, height: 20, borderRadius: 2, marginRight: 7 },
+  finishEndpoint: { right: '2.2%', justifyContent: 'flex-end' },
   endpointLabel: { color: '#DCE8F0', fontSize: 9, lineHeight: 11, fontWeight: '900', letterSpacing: 0.8 },
   endpointHint: { color: '#677887', fontSize: 5.5, lineHeight: 8, fontWeight: '900', letterSpacing: 0.65 },
   finishLabel: { color: '#B6E4FF', textAlign: 'right' }, finishMark: { color: '#A8DFFF', fontSize: 15, fontWeight: '900', marginLeft: 6 },

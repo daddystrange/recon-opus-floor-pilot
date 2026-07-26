@@ -1,5 +1,5 @@
 export type ProductionDepartmentName =
-  | 'Arrival & Inspection'
+  | 'Mechanical'
   | 'Parts Hold'
   | 'Body'
   | 'Paint'

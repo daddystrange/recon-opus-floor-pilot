@@ -1,11 +1,17 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COMPLETED_RETENTION_MS } from '../domain/vehicleLifecycle';
+import { useKeyboardAwareFormScroll } from '../hooks/useFocusedInputScroll';
 import { Vehicle } from '../types';
 import { colors } from '../theme/colors';
 
 type Props = { completed: Vehicle[]; archived: Vehicle[]; onBack: () => void };
 export function VehicleHistoryScreen({ completed, archived, onBack }: Props) {
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
+  const searchRef = useRef<TextInput>(null);
+  const keyboardScroll = useKeyboardAwareFormScroll(scrollRef, insets.bottom);
   const [section, setSection] = useState<'completed' | 'archived'>('completed');
   const [query, setQuery] = useState('');
   const source = section === 'completed' ? completed : archived;
@@ -13,10 +19,10 @@ export function VehicleHistoryScreen({ completed, archived, onBack }: Props) {
   const vehicles = source.filter((vehicle) => !normalized || `${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.stockNumber}`.toLowerCase().includes(normalized));
   return <View style={styles.page}>
     <Pressable onPress={onBack} accessibilityRole="button" style={styles.back}><Text style={styles.backIcon}>‹</Text><Text style={styles.backText}>Back to Production Floor</Text></Pressable>
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" onScroll={keyboardScroll.onScroll} scrollEventThrottle={16} contentContainerStyle={[styles.content, { paddingBottom: Math.max(44, keyboardScroll.bottomPadding) }]}>
       <Text style={styles.kicker}>LIFECYCLE RECORDS</Text><Text style={styles.title}>Vehicle History</Text><Text style={styles.subtitle}>Completed work remains operational for 30 days before moving into the searchable archive.</Text>
       <View style={styles.segment}><Pressable onPress={() => setSection('completed')} style={[styles.segmentItem, section === 'completed' && styles.segmentActive]}><Text style={[styles.segmentText, section === 'completed' && styles.segmentTextActive]}>Completed {completed.length}</Text></Pressable><Pressable onPress={() => setSection('archived')} style={[styles.segmentItem, section === 'archived' && styles.segmentActive]}><Text style={[styles.segmentText, section === 'archived' && styles.segmentTextActive]}>Archived {archived.length}</Text></Pressable></View>
-      <TextInput value={query} onChangeText={setQuery} placeholder="Search year, vehicle, or stock number" placeholderTextColor={colors.subtle} style={styles.search} />
+      <TextInput ref={searchRef} value={query} onChangeText={setQuery} onFocus={() => keyboardScroll.onInputFocus(searchRef.current)} onBlur={keyboardScroll.onInputBlur} placeholder="Search year, vehicle, or stock number" placeholderTextColor={colors.subtle} style={styles.search} />
       <View style={styles.list}>{vehicles.map((vehicle) => <View key={vehicle.id} style={styles.card}><Text style={styles.eyebrow}>{vehicle.year} · {vehicle.stockNumber}</Text><Text style={styles.vehicle}>{vehicle.make} {vehicle.model}</Text><View style={styles.meta}><Text style={styles.metaText}>{vehicle.department}</Text><Text style={styles.metaText}>{vehicle.history.length} history events</Text></View>{section === 'completed' && <Text style={styles.retention}>{daysRemaining(vehicle.completedAt)} days remaining in operational history</Text>}{section === 'archived' && <Text style={styles.retention}>Archived {formatDate(vehicle.archivedAt)}</Text>}</View>)}</View>
       {vehicles.length === 0 && <View style={styles.empty}><Text style={styles.emptyTitle}>{query ? 'No matching records' : `No ${section} vehicles`}</Text><Text style={styles.emptyText}>{section === 'completed' ? 'Closing production will add vehicles here.' : 'Records automatically archive after 30 days.'}</Text></View>}
     </ScrollView>

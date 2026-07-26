@@ -14,7 +14,8 @@ const statusColors: Record<string, string> = {
   'Inspection Complete': '#22C55E', 'Ready for Parts Hold': '#14B8A6', 'Parts Being Identified': '#64748B',
   'Parts Ordered': '#3B82F6', 'Partial Parts Received': '#8B5CF6', 'Waiting on Critical Parts': '#EF4444',
   'Parts Complete': '#22C55E', 'Released to Body': '#14B8A6',
-  'Panel Alignment': '#F59E0B',
+  'Panel Alignment': '#F59E0B', Diagnostics: '#64748B', 'Mechanical Repair': '#F97316',
+  Calibration: '#3B82F6',
 };
 
 export const getStatusColor = (status: string) => statusColors[status] ?? '#64748B';
@@ -37,9 +38,9 @@ const exceptionVehicle = (id: string, year: number, make: string, model: string,
 };
 
 const departmentData = [
-  { name: 'Arrival & Inspection', shortName: 'Arrival & Inspection', statusOptions: ['Received', 'VIN Scanned', 'Pre-Work Inspection', 'Blueprinting', 'Inspection Complete', 'Ready for Parts Hold'], vehicles: [
-    vehicle('a1', 2024, 'Ford', 'F-150 Lariat', 'Agate Black', 'A-1042', 'Received', 'Intake lane 2', '18 min'),
-    vehicle('a2', 2023, 'Honda', 'Pilot Touring', 'Sonic Gray', 'A-1039', 'VIN Scanned', 'Inspection bay', '42 min'),
+  { name: 'Mechanical', shortName: 'Mechanical', statusOptions: ['Diagnostics', 'Mechanical Repair', 'Calibration', 'Ready for Parts Hold'], vehicles: [
+    vehicle('m1', 2024, 'Ford', 'F-150 Lariat', 'Agate Black', 'M-1042', 'Diagnostics', 'Mechanical bay 2', '18 min'),
+    vehicle('m2', 2023, 'Honda', 'Pilot Touring', 'Sonic Gray', 'M-1039', 'Mechanical Repair', 'Mechanical bay 4', '42 min'),
   ]},
   { name: 'Parts Hold', shortName: 'Parts Hold', statusOptions: ['Parts Being Identified', 'Parts Ordered', 'Partial Parts Received', 'Waiting on Critical Parts', 'Parts Complete', 'Released to Body'], vehicles: [
     vehicle('h1', 2024, 'Nissan', 'Pathfinder Platinum', 'Obsidian Green', 'H-0721', 'Parts Ordered', 'Parts rack C', '1 hr 36 min', true),
@@ -91,7 +92,7 @@ export const departments: Department[] = [...departmentData.map((department) => 
 })), { name: 'Revision Needed', shortName: 'Revision Needed', statusOptions: [], vehicles: [] }];
 
 export const defaultStartingStatuses: Record<ProductionDepartmentName, string> = {
-  'Arrival & Inspection': 'Received',
+  Mechanical: 'Diagnostics',
   'Parts Hold': 'Parts Being Identified',
   Body: 'Teardown',
   Paint: 'Prep',
@@ -102,7 +103,7 @@ export const defaultStartingStatuses: Record<ProductionDepartmentName, string> =
 };
 
 export const productionSequence: ProductionDepartmentName[] = [
-  'Arrival & Inspection', 'Parts Hold', 'Body', 'Paint', 'Reassembly', 'Detail', 'Quality Control', 'Delivery',
+  'Mechanical', 'Parts Hold', 'Body', 'Paint', 'Reassembly', 'Detail', 'Quality Control', 'Delivery',
 ];
 
 export const PAINT_INDEX = departments.findIndex(({ name }) => name === 'Paint');

@@ -1,13 +1,14 @@
 # Recon Opus Floor Pilot
 
-A mobile-first production floor pilot for technicians in an automotive reconditioning center. The app opens to a visual Production Floor where technicians enter Arrival & Inspection, Parts Hold, Body, Paint, Reassembly, Detail, Quality Control, or Delivery as physical shop zones.
+A mobile-first collision-repair pilot organized around physical places in the shop. The animated booth doors now open into a lobby where users choose Intake, Production Floor, or The Office. Intake contains the reusable vehicle check-in workflow; the Production Floor contains only active production departments.
 
 This first version is deliberately focused: all vehicle data is local sample data, with no backend, authentication, management dashboard, or client portal.
 
 ## Features
 
-- Single-screen horseshoe Production Floor with central lifecycle-aware WIP, connected shop bays, vehicle previews, and route animations
-- Two top-level destinations: Production Floor and Production Exceptions
+- Physical-location lobby with large Intake, Production Floor, and The Office wayfinding destinations
+- Single-screen horseshoe Production Floor with Mechanical, Parts Hold, Body, Paint, Reassembly, Detail, Quality Control, and Delivery
+- Reusable Intake workflow for VIN capture and exterior inspection
 - High-contrast dark automotive UI designed for shop-floor use
 - Large vehicle counts, status ribbons, readable work-stage metadata, and large touch targets
 - Tap any vehicle card to open its mobile detail view
@@ -49,7 +50,11 @@ npm run typecheck
 
 ```text
 App.tsx                         App shell and session navigation state
+src/components/EntranceScreen  Animated booth-door entrance
+src/components/ShopLobbyScreen Physical-location destination lobby
+src/components/OfficeScreen    Management-office placeholder
 src/components/ProductionFloorScreen  Visual shop-floor overview
+src/modules/vehicleCheckIn     Reusable Intake workflow
 src/components/VehicleHistoryScreen   Completed and archived records
 src/domain/vehicleLifecycle.ts        Pure lifecycle transitions and retention rules
 src/components/DepartmentPage  Department queue screen

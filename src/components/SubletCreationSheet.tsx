@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardAwareFormScroll } from '../hooks/useFocusedInputScroll';
 import { SubletCategory, Vehicle } from '../types';
 import { colors } from '../theme/colors';
 
@@ -9,6 +10,13 @@ const categories: SubletCategory[] = ['Glass', 'Alignment', 'Mechanical', 'Calib
 type Props = { visible: boolean; vehicle: Vehicle | null; onCancel: () => void; onSubmit: (category: SubletCategory, vendor: string, description: string, expectedTiming: string, notes: string) => void };
 
 export function SubletCreationSheet({ visible, vehicle, onCancel, onSubmit }: Props) {
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
+  const vendorRef = useRef<TextInput>(null);
+  const descriptionRef = useRef<TextInput>(null);
+  const expectedRef = useRef<TextInput>(null);
+  const notesRef = useRef<TextInput>(null);
+  const keyboardScroll = useKeyboardAwareFormScroll(scrollRef, insets.bottom);
   const [category, setCategory] = useState<SubletCategory | null>(null);
   const [vendor, setVendor] = useState('');
   const [description, setDescription] = useState('');
@@ -18,13 +26,13 @@ export function SubletCreationSheet({ visible, vehicle, onCancel, onSubmit }: Pr
   if (!vehicle) return null;
   const ready = Boolean(category && description.trim());
   return <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
-    <View style={styles.overlay}><Pressable style={styles.backdrop} onPress={onCancel} /><KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.avoider}><SafeAreaView style={styles.sheet} edges={['bottom', 'left', 'right']}><View style={styles.handle} /><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <View style={styles.overlay}><Pressable style={styles.backdrop} onPress={onCancel} /><KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.avoider}><SafeAreaView style={styles.sheet} edges={['bottom', 'left', 'right']}><View style={styles.handle} /><ScrollView ref={scrollRef} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" onScroll={keyboardScroll.onScroll} scrollEventThrottle={16} contentContainerStyle={[styles.content, { paddingBottom: Math.max(28, keyboardScroll.bottomPadding) }]} showsVerticalScrollIndicator={false}>
       <View style={styles.heading}><View style={styles.headingCopy}><Text style={styles.kicker}>MANAGER APPROVAL REQUIRED</Text><Text style={styles.title}>Request Sublet</Text><Text style={styles.vehicle}>{vehicle.year} {vehicle.make} {vehicle.model} · {vehicle.stockNumber}</Text></View><Pressable onPress={onCancel} style={styles.close}><Text style={styles.closeText}>×</Text></Pressable></View>
       <Text style={styles.label}>SUBLET CATEGORY</Text><View style={styles.categories}>{categories.map((item) => <Pressable key={item} onPress={() => setCategory(item)} style={({ pressed }) => [styles.category, category === item && styles.categorySelected, pressed && styles.pressed]}><Text style={[styles.categoryText, category === item && styles.categoryTextSelected]}>{item}</Text></Pressable>)}</View>
-      <Text style={styles.label}>SUGGESTED VENDOR <Text style={styles.optional}>OPTIONAL</Text></Text><TextInput value={vendor} onChangeText={setVendor} placeholder="Vendor name" placeholderTextColor={colors.subtle} style={styles.input} />
-      <Text style={styles.label}>SERVICE DESCRIPTION</Text><TextInput value={description} onChangeText={setDescription} placeholder="What work is being performed?" placeholderTextColor={colors.subtle} maxLength={160} style={styles.input} />
-      <Text style={styles.label}>EXPECTED TIMING <Text style={styles.optional}>OPTIONAL</Text></Text><TextInput value={expectedReturn} onChangeText={setExpectedReturn} placeholder="Today at 3:00 PM" placeholderTextColor={colors.subtle} maxLength={80} style={styles.input} />
-      <Text style={styles.label}>NOTES <Text style={styles.optional}>OPTIONAL</Text></Text><TextInput value={notes} onChangeText={setNotes} placeholder="Coordination details" placeholderTextColor={colors.subtle} maxLength={300} multiline style={[styles.input, styles.notesInput]} />
+      <Text style={styles.label}>SUGGESTED VENDOR <Text style={styles.optional}>OPTIONAL</Text></Text><TextInput ref={vendorRef} value={vendor} onChangeText={setVendor} onFocus={() => keyboardScroll.onInputFocus(vendorRef.current)} onBlur={keyboardScroll.onInputBlur} placeholder="Vendor name" placeholderTextColor={colors.subtle} style={styles.input} />
+      <Text style={styles.label}>SERVICE DESCRIPTION</Text><TextInput ref={descriptionRef} value={description} onChangeText={setDescription} onFocus={() => keyboardScroll.onInputFocus(descriptionRef.current)} onBlur={keyboardScroll.onInputBlur} placeholder="What work is being performed?" placeholderTextColor={colors.subtle} maxLength={160} style={styles.input} />
+      <Text style={styles.label}>EXPECTED TIMING <Text style={styles.optional}>OPTIONAL</Text></Text><TextInput ref={expectedRef} value={expectedReturn} onChangeText={setExpectedReturn} onFocus={() => keyboardScroll.onInputFocus(expectedRef.current)} onBlur={keyboardScroll.onInputBlur} placeholder="Today at 3:00 PM" placeholderTextColor={colors.subtle} maxLength={80} style={styles.input} />
+      <Text style={styles.label}>NOTES <Text style={styles.optional}>OPTIONAL</Text></Text><TextInput ref={notesRef} value={notes} onChangeText={setNotes} onFocus={() => keyboardScroll.onInputFocus(notesRef.current)} onBlur={keyboardScroll.onInputBlur} onContentSizeChange={keyboardScroll.scrollFocusedInputIntoView} placeholder="Coordination details" placeholderTextColor={colors.subtle} maxLength={300} multiline style={[styles.input, styles.notesInput]} />
       <Pressable disabled={!ready} onPress={() => category && onSubmit(category, vendor.trim(), description.trim(), expectedReturn.trim(), notes.trim())} style={({ pressed }) => [styles.submit, !ready && styles.submitDisabled, pressed && ready && styles.pressed]}><Text style={styles.submitText}>Submit Sublet Request</Text></Pressable>
     </ScrollView></SafeAreaView></KeyboardAvoidingView></View>
   </Modal>;

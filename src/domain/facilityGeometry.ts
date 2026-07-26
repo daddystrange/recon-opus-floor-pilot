@@ -5,7 +5,7 @@ export type FacilityMovement = { id: number; from: FacilityEndpoint; to: Facilit
 export type NormalizedPoint = { x: number; y: number };
 
 export const facilityPositions: Record<FacilityEndpoint, NormalizedPoint> = {
-  'Arrival & Inspection': { x: 0.21, y: 0.17 },
+  Mechanical: { x: 0.21, y: 0.17 },
   'Parts Hold': { x: 0.21, y: 0.39 },
   Body: { x: 0.21, y: 0.61 },
   Paint: { x: 0.21, y: 0.83 },

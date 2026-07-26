@@ -1,94 +1,117 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image, Pressable, StatusBar, StyleSheet, useWindowDimensions, View } from 'react-native';
-import Animated, { cancelAnimation, Easing, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
+import { Animated, Easing, Image, Pressable, StatusBar, StyleSheet, useWindowDimensions, View } from 'react-native';
 
-const boothDoors = require('../../assets/Industrial doors with _Recon Opus_ branding (1).png');
-const OPEN_DURATION = 800;
-const WHITE_LIGHT_DELAY_MS = 300;
-const WHITE_LIGHT_FADE_IN_MS = 400;
+const floorImage = require('../../assets/recon-opus-floor.png');
+const leftDoorImage = require('../../assets/recon-opus-left-door.png');
+const rightDoorImage = require('../../assets/recon-opus-right-door.png');
+
+const SCENE_WIDTH = 853;
+const SCENE_HEIGHT = 1844;
+const DOOR_ASSET_WIDTH = 427;
+const DOOR_ASSET_HEIGHT = 1452;
+const RIGHT_DOOR_SOURCE_X = 426;
+const FLOOR_ASSET_HEIGHT = 392;
+
+const DOORS_OPEN_MS = 1200;
 
 type Props = {
-  onReplaceWithProductionFloor: () => void;
+  showDoors: boolean;
+  onEnterLobby: () => void;
 };
 
-export function EntranceScreen({ onReplaceWithProductionFloor }: Props) {
-  const { width, height } = useWindowDimensions();
-  const progress = useSharedValue(0);
-  const whiteLightOpacity = useSharedValue(0);
-  const openingRef = useRef(false);
+export function EntranceScreen({ showDoors, onEnterLobby }: Props) {
+  const doorProgress = useRef(new Animated.Value(0)).current;
+  const doorAnimation = useRef<Animated.CompositeAnimation | null>(null);
+  const openingStarted = useRef(false);
   const [opening, setOpening] = useState(false);
-
-  useEffect(() => () => {
-    cancelAnimation(progress);
-    cancelAnimation(whiteLightOpacity);
-  }, [progress, whiteLightOpacity]);
-
-  const leftDoorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -progress.value * width / 2 }],
-  }));
-  const rightDoorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: progress.value * width / 2 }],
-  }));
-  const lightBloomStyle = useAnimatedStyle(() => ({
-    opacity: whiteLightOpacity.value,
-  }));
+  const [doorsVisible, setDoorsVisible] = useState(showDoors);
 
   const openDoors = () => {
-    if (openingRef.current) return;
-    openingRef.current = true;
+    if (openingStarted.current) return;
+    openingStarted.current = true;
     setOpening(true);
-    whiteLightOpacity.value = withDelay(
-      WHITE_LIGHT_DELAY_MS,
-      withTiming(1, { duration: WHITE_LIGHT_FADE_IN_MS, easing: Easing.in(Easing.quad) }),
-    );
-    progress.value = withTiming(
-      1,
-      { duration: OPEN_DURATION, easing: Easing.bezier(0.48, 0.02, 0.78, 1) },
-      (finished) => {
-        if (finished) runOnJS(onReplaceWithProductionFloor)();
-      },
-    );
+    const animation = Animated.timing(doorProgress, {
+      toValue: 1,
+      duration: DOORS_OPEN_MS,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    });
+    doorAnimation.current = animation;
+    animation.start(({ finished: doorsOpen }) => {
+      if (!doorsOpen) return;
+      setDoorsVisible(false);
+      onEnterLobby();
+    });
   };
 
+  useEffect(() => () => doorAnimation.current?.stop(), []);
+
   return (
-    <View style={styles.root}>
-      <StatusBar hidden />
-      <Animated.View pointerEvents="none" style={[styles.panel, styles.leftPanel, { width: width / 2 }, leftDoorStyle]}>
-        <Image source={boothDoors} resizeMode="cover" style={{ width, height }} />
-      </Animated.View>
-      <Animated.View pointerEvents="none" style={[styles.panel, { left: width / 2, width: width / 2 }, rightDoorStyle]}>
-        <Image source={boothDoors} resizeMode="cover" style={{ width, height, transform: [{ translateX: -width / 2 }] }} />
-      </Animated.View>
-      <Animated.View pointerEvents="none" style={[styles.lightBloom, lightBloomStyle]} />
-      <Pressable
+    <View pointerEvents="box-none" style={styles.root}>
+      {showDoors && <StatusBar hidden />}
+      <ShopDoorScene doorsVisible={doorsVisible} progress={doorProgress} />
+      {doorsVisible && <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Enter the Production Floor"
+        accessibilityLabel="Enter the shop lobby"
         disabled={opening}
         onPress={openDoors}
         style={StyleSheet.absoluteFill}
+      />}
+    </View>
+  );
+}
+
+function ShopDoorScene({ doorsVisible, progress }: { doorsVisible: boolean; progress: Animated.Value }) {
+  const { width, height } = useWindowDimensions();
+  const coverScale = Math.max(width / SCENE_WIDTH, height / SCENE_HEIGHT);
+  const renderedSceneWidth = SCENE_WIDTH * coverScale;
+  const renderedSceneHeight = SCENE_HEIGHT * coverScale;
+  const sceneLeft = (width - renderedSceneWidth) / 2;
+  const sceneTop = (height - renderedSceneHeight) / 2;
+  const renderedDoorWidth = DOOR_ASSET_WIDTH * coverScale;
+  const renderedDoorHeight = DOOR_ASSET_HEIGHT * coverScale;
+  const floorTop = sceneTop + renderedDoorHeight;
+  const renderedFloorHeight = FLOOR_ASSET_HEIGHT * coverScale;
+  const leftTranslate = progress.interpolate({ inputRange: [0, 1], outputRange: [0, -width / 2] });
+  const rightTranslate = progress.interpolate({ inputRange: [0, 1], outputRange: [0, width / 2] });
+
+  return (
+    <View pointerEvents="none" style={styles.doorScene}>
+      <Image
+        source={floorImage}
+        resizeMode="cover"
+        style={[styles.floorAsset, { left: sceneLeft, top: floorTop, width: renderedSceneWidth, height: renderedFloorHeight }]}
       />
+      {doorsVisible && <Animated.Image
+        source={leftDoorImage}
+        resizeMode="cover"
+        style={[styles.doorAsset, { left: sceneLeft, top: sceneTop, width: renderedDoorWidth, height: renderedDoorHeight, transform: [{ translateX: leftTranslate }] }]}
+      />}
+      {doorsVisible && <Animated.Image
+        source={rightDoorImage}
+        resizeMode="cover"
+        style={[styles.doorAsset, { left: sceneLeft + RIGHT_DOOR_SOURCE_X * coverScale, top: sceneTop, width: renderedDoorWidth, height: renderedDoorHeight, transform: [{ translateX: rightTranslate }] }]}
+      />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
-    flex: 1,
-    overflow: 'hidden',
-    backgroundColor: '#090D0F',
-  },
-  panel: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    overflow: 'hidden',
-  },
-  leftPanel: {
-    left: 0,
-  },
-  lightBloom: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    overflow: 'hidden',
+  },
+  doorScene: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  floorAsset: {
+    position: 'absolute',
+    zIndex: 1,
+  },
+  doorAsset: {
+    position: 'absolute',
     zIndex: 2,
-    backgroundColor: '#FFFFFF',
   },
 });

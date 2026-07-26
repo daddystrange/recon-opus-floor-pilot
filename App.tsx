@@ -10,12 +10,15 @@ import { RevisionReviewScreen } from './src/components/RevisionReviewScreen';
 import { ProductionFloorScreen } from './src/components/ProductionFloorScreen';
 import { VehicleHistoryScreen } from './src/components/VehicleHistoryScreen';
 import { EntranceScreen } from './src/components/EntranceScreen';
+import { ShopLobbyScreen } from './src/components/ShopLobbyScreen';
+import { OfficeScreen } from './src/components/OfficeScreen';
 import { ExceptionCompletionSheet } from './src/components/ExceptionCompletionSheet';
 import { SubletCreationSheet } from './src/components/SubletCreationSheet';
 import { SubletsQueueScreen } from './src/components/SubletsQueueScreen';
 import { SubletReturnSheet } from './src/components/SubletReturnSheet';
 import { SubletApprovalReviewScreen } from './src/components/SubletApprovalReviewScreen';
 import { SubletDenialRoutingSheet } from './src/components/SubletDenialRoutingSheet';
+import { VehicleCheckInModule } from './src/modules/vehicleCheckIn/VehicleCheckInModule';
 import { defaultStartingStatuses, departments as initialDepartments, getStatusColor, productionSequence } from './src/data/departments';
 import { initialSublets } from './src/data/sublets';
 import { colors } from './src/theme/colors';
@@ -23,9 +26,8 @@ import { DepartmentName, ProductionDepartmentName, RevisionReason, SubletCategor
 import { approveSubletRequest, closeProduction, completeProductionException, denySubletRequest, partitionCompleted, recommendedExceptionDestination, recordPhaseMove, requestSubletApproval, returnSubletToProduction, routeDeniedSubletRequest, sendToRevision, startProductionException } from './src/domain/vehicleLifecycle';
 import { FacilityMovement } from './src/domain/facilityGeometry';
 
-const FLOOR_FADE_IN_MS = 650;
-const WHITE_LIGHT_FADE_OUT_MS = 650;
 const FIRST_TRACER_DELAY_MS = 2000;
+const LOBBY_DESTINATION_FADE_IN_MS = 340;
 
 export default function App() {
   const { width } = useWindowDimensions();
@@ -33,8 +35,8 @@ export default function App() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const floorRevealOpacity = useRef(new Animated.Value(1)).current;
-  const whiteTransitionOpacity = useRef(new Animated.Value(0)).current;
-  const [screen, setScreen] = useState<{ kind: 'entrance' } | { kind: 'floor' } | { kind: 'department'; name: ProductionDepartmentName } | { kind: 'revision' } | { kind: 'sublets' } | { kind: 'history' }>({ kind: 'entrance' });
+  const [lobbyInteractive, setLobbyInteractive] = useState(true);
+  const [screen, setScreen] = useState<{ kind: 'entrance' } | { kind: 'lobby' } | { kind: 'office' } | { kind: 'floor' } | { kind: 'department'; name: ProductionDepartmentName } | { kind: 'checkin' } | { kind: 'revision' } | { kind: 'sublets' } | { kind: 'history' }>({ kind: 'entrance' });
   const [floorMotionEnabled, setFloorMotionEnabled] = useState(false);
   const [departments, setDepartments] = useState(initialDepartments);
   const [selected, setSelected] = useState<{ departmentIndex: number; vehicleId: string } | null>(null);
@@ -71,10 +73,10 @@ export default function App() {
   const subletReturnItem = sublets.find(({ sublet }) => sublet.id === subletReturnId) ?? null;
   const previousSubletDepartment = subletReturnItem?.sublet.productionLocationBeforeSublet;
   const previousSubletIndex = previousSubletDepartment ? productionSequence.indexOf(previousSubletDepartment) : -1;
-  const subletRecommendedDestination = (previousSubletIndex >= 0 ? productionSequence[previousSubletIndex + 1] : undefined) ?? previousSubletDepartment ?? 'Arrival & Inspection';
+  const subletRecommendedDestination = (previousSubletIndex >= 0 ? productionSequence[previousSubletIndex + 1] : undefined) ?? previousSubletDepartment ?? 'Mechanical';
   const deniedPreviousDepartment = subletDenialRoutingVehicle?.activeSubletRequest?.previousProductionLocation;
   const deniedPreviousIndex = deniedPreviousDepartment ? productionSequence.indexOf(deniedPreviousDepartment) : -1;
-  const deniedRecommendedDestination = (deniedPreviousIndex >= 0 ? productionSequence[deniedPreviousIndex + 1] : undefined) ?? deniedPreviousDepartment ?? 'Arrival & Inspection';
+  const deniedRecommendedDestination = (deniedPreviousIndex >= 0 ? productionSequence[deniedPreviousIndex + 1] : undefined) ?? deniedPreviousDepartment ?? 'Mechanical';
   const currentQueue = screen.kind === 'department' ? departments.find(({ name }) => name === screen.name) ?? null : null;
   const productionFloorWip = departments.filter(({ name }) => name !== 'Revision Needed').reduce((total, department) => total + department.vehicles.length, 0);
   const revisionWip = revisionDepartment?.vehicles.length ?? 0;
@@ -96,34 +98,40 @@ export default function App() {
   useEffect(() => () => {
     if (startupTimer.current) clearTimeout(startupTimer.current);
     floorRevealOpacity.stopAnimation();
-    whiteTransitionOpacity.stopAnimation();
-  }, [floorRevealOpacity, whiteTransitionOpacity]);
+  }, [floorRevealOpacity]);
 
-  const enterProductionFloor = useCallback(() => {
-    floorRevealOpacity.setValue(0);
-    whiteTransitionOpacity.setValue(1);
+  const enterLobby = useCallback(() => {
     setFloorMotionEnabled(false);
-    setScreen({ kind: 'floor' });
+    floorRevealOpacity.setValue(1);
+    setLobbyInteractive(true);
+    setScreen({ kind: 'lobby' });
+  }, [floorRevealOpacity]);
+
+  const openLobbyDestination = useCallback((destination: 'checkin' | 'floor' | 'office') => {
+    if (startupTimer.current) clearTimeout(startupTimer.current);
+    setFloorMotionEnabled(false);
+    floorRevealOpacity.setValue(0);
+    setScreen({ kind: destination });
     requestAnimationFrame(() => {
-      Animated.parallel([
-        Animated.timing(floorRevealOpacity, {
-          toValue: 1,
-          duration: FLOOR_FADE_IN_MS,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(whiteTransitionOpacity, {
-          toValue: 0,
-          duration: WHITE_LIGHT_FADE_OUT_MS,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => {
-        if (!finished) return;
-        startupTimer.current = setTimeout(() => setFloorMotionEnabled(true), FIRST_TRACER_DELAY_MS);
+      Animated.timing(floorRevealOpacity, {
+        toValue: 1,
+        duration: LOBBY_DESTINATION_FADE_IN_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished && destination === 'floor') {
+          startupTimer.current = setTimeout(() => setFloorMotionEnabled(true), FIRST_TRACER_DELAY_MS);
+        }
       });
     });
-  }, [floorRevealOpacity, whiteTransitionOpacity]);
+  }, [floorRevealOpacity]);
+
+  const returnToLobby = useCallback(() => {
+    if (startupTimer.current) clearTimeout(startupTimer.current);
+    setFloorMotionEnabled(false);
+    setLobbyInteractive(true);
+    setScreen({ kind: 'lobby' });
+  }, []);
 
   const openDepartment = (name: ProductionDepartmentName) => setScreen({ kind: 'department', name });
 
@@ -405,22 +413,22 @@ export default function App() {
 
   return (
     <SafeAreaProvider style={styles.provider}>
-      {screen.kind === 'entrance' ? (
-        <EntranceScreen onReplaceWithProductionFloor={enterProductionFloor} />
-      ) : (
-        <View style={styles.appRoute}>
+      <View style={styles.appRoute}>
         <Animated.View style={[styles.appScreen, { opacity: floorRevealOpacity }]}>
         <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
           <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-          {screen.kind !== 'floor' && screen.kind !== 'department' && !selected && <View style={styles.brandBar}>
+          {screen.kind !== 'entrance' && screen.kind !== 'floor' && screen.kind !== 'department' && screen.kind !== 'checkin' && screen.kind !== 'lobby' && screen.kind !== 'office' && !selected && <View style={styles.brandBar}>
             <View style={styles.brandMark}><View style={styles.markLine} /><View style={[styles.markLine, styles.markLineShort]} /><View style={styles.markLine} /></View>
             <Text style={styles.brand}>RECON OPUS</Text>
           </View>}
-          {screen.kind !== 'floor' && screen.kind !== 'department' && <View style={styles.globalNav}>
+          {screen.kind !== 'entrance' && screen.kind !== 'floor' && screen.kind !== 'department' && screen.kind !== 'checkin' && screen.kind !== 'lobby' && screen.kind !== 'office' && <View style={styles.globalNav}>
             <Pressable onPress={() => setScreen({ kind: 'revision' })} accessibilityRole="tab" accessibilityState={{ selected: screen.kind === 'revision' }} style={[styles.globalNavItem, screen.kind === 'revision' && styles.globalNavItemActive]}><Text style={[styles.globalNavText, screen.kind === 'revision' && styles.globalNavTextActive]}>Production Exceptions</Text><View style={styles.revisionBadge}><Text style={styles.revisionBadgeText}>{revisionDepartment?.vehicles.length ?? 0}</Text></View></Pressable>
           </View>}
           <View style={styles.screen}>
-          {screen.kind === 'floor' && <ProductionFloorScreen departments={departments} revisionCount={revisionWip} subletCount={sublets.length} motionEnabled={floorMotionEnabled} movement={lastMovement} onMovementComplete={completeFacilityMovement} onOpenDepartment={openDepartment} onOpenRevisions={() => setScreen({ kind: 'revision' })} onOpenSublets={() => setScreen({ kind: 'sublets' })} onOpenHistory={() => setScreen({ kind: 'history' })} />}
+          {screen.kind === 'lobby' && <ShopLobbyScreen interactive={lobbyInteractive} onOpenIntake={() => openLobbyDestination('checkin')} onOpenProductionFloor={() => openLobbyDestination('floor')} onOpenOffice={() => openLobbyDestination('office')} />}
+          {screen.kind === 'office' && <OfficeScreen onBackToLobby={returnToLobby} />}
+          {screen.kind === 'floor' && <ProductionFloorScreen departments={departments} revisionCount={revisionWip} subletCount={sublets.length} motionEnabled={floorMotionEnabled} movement={lastMovement} onMovementComplete={completeFacilityMovement} onOpenDepartment={openDepartment} onBackToLobby={returnToLobby} onOpenRevisions={() => setScreen({ kind: 'revision' })} onOpenSublets={() => setScreen({ kind: 'sublets' })} onOpenHistory={() => setScreen({ kind: 'history' })} />}
+          {screen.kind === 'checkin' && <VehicleCheckInModule onExit={returnToLobby} />}
           {screen.kind === 'revision' && revisionDepartment && <RevisionQueuePage department={revisionDepartment} width={width} scrollOffset={scrollPositions.current['Revision Needed'] ?? 0} onScrollOffsetChange={(offset) => { scrollPositions.current['Revision Needed'] = offset; }} onVehiclePress={(vehicle) => vehicle.activeSubletRequest?.status === 'denied_pending_routing' ? setSubletDenialRoutingVehicleId(vehicle.id) : setRevisionReviewVehicleId(vehicle.id)} onBackToFloor={() => setScreen({ kind: 'floor' })} />}
           {screen.kind === 'sublets' && <SubletsQueueScreen items={sublets} onBackToFloor={() => setScreen({ kind: 'floor' })} onAdvanceStatus={advanceSublet} />}
           {screen.kind === 'department' && currentQueue && <DepartmentPage
@@ -480,10 +488,11 @@ export default function App() {
         <SubletDenialRoutingSheet vehicle={subletDenialRoutingVehicle} recommended={deniedRecommendedDestination} destinations={productionSequence} onSelect={commitDeniedSubletRouting} onCancel={() => setSubletDenialRoutingVehicleId(null)} />
         </SafeAreaView>
         </Animated.View>
-        <Animated.View pointerEvents="none" style={[styles.whiteTransition, { opacity: whiteTransitionOpacity }]} />
+        {(screen.kind === 'entrance' || screen.kind === 'lobby') && (
+          <EntranceScreen showDoors={screen.kind === 'entrance'} onEnterLobby={enterLobby} />
+        )}
         {toast && <ToastOverlay message={toast} />}
-        </View>
-      )}
+      </View>
     </SafeAreaProvider>
   );
 }
@@ -499,9 +508,8 @@ function ToastOverlay({ message }: { message: string }) {
 
 const styles = StyleSheet.create({
   provider: { flex: 1, backgroundColor: colors.background },
-  appRoute: { flex: 1, position: 'relative', backgroundColor: colors.background },
+  appRoute: { flex: 1, position: 'relative', backgroundColor: '#000000' },
   appScreen: { flex: 1 },
-  whiteTransition: { ...StyleSheet.absoluteFillObject, zIndex: 100, backgroundColor: '#FFFFFF' },
   safe: { flex: 1, backgroundColor: colors.background },
   brandBar: { height: 44, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border },
   brandMark: { width: 24, height: 24, borderRadius: 6, backgroundColor: colors.accent, justifyContent: 'center', paddingHorizontal: 5, gap: 2, marginRight: 8 },
