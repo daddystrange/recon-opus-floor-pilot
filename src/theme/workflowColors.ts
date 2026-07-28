@@ -1,6 +1,7 @@
 import { ProductionDepartmentName } from '../types';
 
 export const workflowColors: Record<ProductionDepartmentName, string> = {
+  Entrance: '#B84A4A',
   Mechanical: '#B84A4A',
   'Parts Hold': '#C87336',
   Body: '#D58D36',
@@ -12,8 +13,9 @@ export const workflowColors: Record<ProductionDepartmentName, string> = {
 };
 
 export const workflowTracerColors = [
-  workflowColors.Mechanical,
+  workflowColors.Entrance,
   workflowColors['Parts Hold'],
+  workflowColors.Mechanical,
   workflowColors.Body,
   workflowColors.Paint,
   workflowColors.Reassembly,

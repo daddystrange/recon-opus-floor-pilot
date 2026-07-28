@@ -2,6 +2,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Department, Vehicle } from '../types';
 import { colors } from '../theme/colors';
 import { BackToFloorButton } from './BackToFloorButton';
+import { ExceptionVehicleCard } from './ExceptionVehicleCard';
 
 type Props = {
   department: Department;
@@ -22,6 +23,7 @@ export function RevisionQueuePage({ department, width, scrollOffset, onScrollOff
     </View>
     <ScrollView contentOffset={{ x: 0, y: scrollOffset }} onScroll={({ nativeEvent }) => onScrollOffsetChange(nativeEvent.contentOffset.y)} scrollEventThrottle={16} contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
       {department.vehicles.map((vehicle) => {
+        if (vehicle.activeException?.active) return <ExceptionVehicleCard key={vehicle.id} vehicle={vehicle} onPress={() => onVehiclePress(vehicle)} />;
         const subletRequest = vehicle.activeSubletRequest;
         if (subletRequest) return <Pressable key={vehicle.id} onPress={() => onVehiclePress(vehicle)} accessibilityRole="button" accessibilityHint="Opens Sublet approval review" style={({ pressed }) => [styles.card, styles.subletCard, pressed && styles.pressed]}><View style={[styles.ribbon, styles.subletRibbon]} /><View style={styles.cardContent}><Text style={styles.vehicleEyebrow}>{vehicle.year} · STOCK {vehicle.stockNumber}</Text><Text style={styles.vehicleName}>{vehicle.make} {vehicle.model}</Text><View style={styles.rule} /><View style={styles.metaRow}><View style={styles.meta}><Text style={styles.metaLabel}>EXCEPTION TYPE</Text><Text style={styles.subletType}>Sublet Approval Required</Text></View><View style={styles.meta}><Text style={styles.metaLabel}>WAITING</Text><Text style={styles.waiting}>{formatWaiting(subletRequest.requestedAt)}</Text></View></View><View style={styles.metaRow}><View style={styles.meta}><Text style={styles.metaLabel}>REQUESTED CATEGORY</Text><Text style={styles.metaValue}>{subletRequest.requestedCategory}</Text></View><View style={styles.meta}><Text style={styles.metaLabel}>PREVIOUS LOCATION</Text><Text style={styles.metaValue}>{subletRequest.previousProductionLocation}</Text></View></View><Text style={styles.reasonLabel}>REQUESTED SERVICE</Text><Text style={styles.reason}>{subletRequest.requestedServiceDescription}</Text>{subletRequest.suggestedVendor && <><Text style={styles.notesLabel}>SUGGESTED VENDOR</Text><Text style={styles.notes}>{subletRequest.suggestedVendor}</Text></>}<Text style={styles.notesLabel}>REQUESTED BY</Text><Text style={styles.notes}>{subletRequest.requestedBy}</Text><Text style={styles.pending}>{subletRequest.status === 'denied_pending_routing' ? 'ROUTING DECISION REQUIRED' : 'AWAITING MANAGER APPROVAL'}</Text><Text style={styles.reviewLink}>MANAGER REVIEW  ›</Text></View></Pressable>;
         const revision = vehicle.activeRevision;

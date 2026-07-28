@@ -1,4 +1,5 @@
 export type ProductionDepartmentName =
+  | 'Entrance'
   | 'Mechanical'
   | 'Parts Hold'
   | 'Body'
@@ -17,7 +18,7 @@ export type VehicleTimerState = { category: VehicleTimeCategory; categoryStarted
 
 export type VehicleHistoryEvent = {
   id: string;
-  type: 'phase_completed' | 'revision_requested' | 'revision_resolved' | 'exception_started' | 'exception_completed' | 'sublet_requested' | 'moved_to_production_exceptions' | 'sublet_manager_approved' | 'sublet_manager_denied' | 'sublet_started' | 'sublet_dispatched' | 'sublet_work_completed' | 'sublet_returned' | 'sublet_reentered_production' | 'production_closed' | 'archived';
+  type: 'job_assigned' | 'phase_completed' | 'revision_requested' | 'revision_resolved' | 'exception_started' | 'exception_completed' | 'sublet_requested' | 'moved_to_production_exceptions' | 'sublet_manager_approved' | 'sublet_manager_denied' | 'sublet_started' | 'sublet_dispatched' | 'sublet_work_completed' | 'sublet_returned' | 'sublet_reentered_production' | 'production_closed' | 'archived';
   occurredAt: number;
   fromDepartment?: OperationalLocation;
   toDepartment?: OperationalLocation;
@@ -45,6 +46,8 @@ export type Vehicle = {
   archivedAt?: number;
   history: VehicleHistoryEvent[];
   priority?: boolean;
+  assignedTechnicianId?: string;
+  assignedTechnicianName?: string;
   activeRevision?: {
     originalDepartment: ProductionDepartmentName;
     originalStatus: string;
@@ -100,6 +103,32 @@ export type Department = {
   shortName: string;
   statusOptions: string[];
   vehicles: Vehicle[];
+};
+
+export type RepairType = 'Collision' | 'Cosmetic' | 'Mechanical' | 'PDR';
+
+export type UnassignedJob = {
+  id: string;
+  vehicleId: string;
+  year: number;
+  make: string;
+  model: string;
+  color: string;
+  roNumber: string;
+  customerName?: string;
+  daysOnLot: number;
+  estimatedCompletionDate: string;
+  repairType: RepairType;
+  priority: 'Standard' | 'Priority' | 'Critical';
+};
+
+export type Technician = {
+  id: string;
+  name: string;
+  department: ProductionDepartmentName;
+  role: string;
+  activeJobs: number;
+  initials: string;
 };
 
 export type SubletStatus = 'Awaiting Dispatch' | 'At Vendor' | 'Work Complete' | 'Returned';

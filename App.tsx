@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { Alert, Animated, Easing, Pressable, StatusBar, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,7 +9,7 @@ import { RevisionQueuePage } from './src/components/RevisionQueuePage';
 import { RevisionReviewScreen } from './src/components/RevisionReviewScreen';
 import { ProductionFloorScreen } from './src/components/ProductionFloorScreen';
 import { VehicleHistoryScreen } from './src/components/VehicleHistoryScreen';
-import { EntranceScreen } from './src/components/EntranceScreen';
+import { EntranceScreen, EntranceStage } from './src/components/EntranceScreen';
 import { ShopLobbyScreen } from './src/components/ShopLobbyScreen';
 import { OfficeScreen } from './src/components/OfficeScreen';
 import { ExceptionCompletionSheet } from './src/components/ExceptionCompletionSheet';
@@ -19,26 +19,52 @@ import { SubletReturnSheet } from './src/components/SubletReturnSheet';
 import { SubletApprovalReviewScreen } from './src/components/SubletApprovalReviewScreen';
 import { SubletDenialRoutingSheet } from './src/components/SubletDenialRoutingSheet';
 import { VehicleCheckInModule } from './src/modules/vehicleCheckIn/VehicleCheckInModule';
+import { createJobProfile, JobProfile } from './src/modules/vehicleCheckIn/jobProfileTypes';
 import { defaultStartingStatuses, departments as initialDepartments, getStatusColor, productionSequence } from './src/data/departments';
 import { initialSublets } from './src/data/sublets';
+import { initialTechnicians, initialUnassignedJobs } from './src/data/office';
 import { colors } from './src/theme/colors';
-import { DepartmentName, ProductionDepartmentName, RevisionReason, SubletCategory, SubletQueueItem, Vehicle, VehicleSublet } from './src/types';
+import { DepartmentName, ProductionDepartmentName, RevisionReason, SubletCategory, SubletQueueItem, Technician, UnassignedJob, Vehicle, VehicleSublet } from './src/types';
 import { approveSubletRequest, closeProduction, completeProductionException, denySubletRequest, partitionCompleted, recommendedExceptionDestination, recordPhaseMove, requestSubletApproval, returnSubletToProduction, routeDeniedSubletRequest, sendToRevision, startProductionException } from './src/domain/vehicleLifecycle';
 import { FacilityMovement } from './src/domain/facilityGeometry';
 
 const FIRST_TRACER_DELAY_MS = 2000;
 const LOBBY_DESTINATION_FADE_IN_MS = 340;
 
+type StartupStage = EntranceStage | 'lobby';
+type StartupEvent = 'logoFinished' | 'doorsFinished';
+
+function startupReducer(stage: StartupStage, event: StartupEvent): StartupStage {
+  if (stage === 'logo' && event === 'logoFinished') return 'shopDoors';
+  if (stage === 'shopDoors' && event === 'doorsFinished') return 'lobby';
+  return stage;
+}
+
 export default function App() {
+  const [startupStage, dispatchStartup] = useReducer(startupReducer, 'logo');
+  const showShopDoors = useCallback(() => dispatchStartup('logoFinished'), []);
+  const completeIntro = useCallback(() => dispatchStartup('doorsFinished'), []);
+
+  return (
+    <View style={styles.startupRoot}>
+      {startupStage !== 'logo' && <MainApplication key="main-application" lobbyContentVisible={startupStage === 'lobby'} />}
+      {startupStage !== 'lobby' && <EntranceScreen key="startup-entrance" stage={startupStage} onLogoComplete={showShopDoors} onDoorsComplete={completeIntro} />}
+    </View>
+  );
+}
+
+function MainApplication({ lobbyContentVisible }: { lobbyContentVisible: boolean }) {
   const { width } = useWindowDimensions();
   const scrollPositions = useRef<Partial<Record<DepartmentName, number>>>({});
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const floorRevealOpacity = useRef(new Animated.Value(1)).current;
   const [lobbyInteractive, setLobbyInteractive] = useState(true);
-  const [screen, setScreen] = useState<{ kind: 'entrance' } | { kind: 'lobby' } | { kind: 'office' } | { kind: 'floor' } | { kind: 'department'; name: ProductionDepartmentName } | { kind: 'checkin' } | { kind: 'revision' } | { kind: 'sublets' } | { kind: 'history' }>({ kind: 'entrance' });
+  const [screen, setScreen] = useState<{ kind: 'lobby' } | { kind: 'office' } | { kind: 'floor' } | { kind: 'department'; name: ProductionDepartmentName } | { kind: 'checkin' } | { kind: 'revision' } | { kind: 'sublets' } | { kind: 'history' }>({ kind: 'lobby' });
   const [floorMotionEnabled, setFloorMotionEnabled] = useState(false);
   const [departments, setDepartments] = useState(initialDepartments);
+  const [unassignedJobs, setUnassignedJobs] = useState<UnassignedJob[]>(initialUnassignedJobs);
+  const [technicians, setTechnicians] = useState<Technician[]>(initialTechnicians);
   const [selected, setSelected] = useState<{ departmentIndex: number; vehicleId: string } | null>(null);
   const [moveSheetSelection, setMoveSheetSelection] = useState<{ departmentIndex: number; vehicleId: string; initialMode: 'actions' | 'revision' } | null>(null);
   const [exitingMove, setExitingMove] = useState<{ sourceIndex: number; vehicleId: string; destination: ProductionDepartmentName; direction: -1 | 1 } | null>(null);
@@ -53,6 +79,7 @@ export default function App() {
   const [completedVehicles, setCompletedVehicles] = useState<Vehicle[]>([]);
   const [archivedVehicles, setArchivedVehicles] = useState<Vehicle[]>([]);
   const [lastMovement, setLastMovement] = useState<FacilityMovement | null>(null);
+  const [intakeJobProfile, setIntakeJobProfile] = useState<JobProfile | null>(null);
 
   const selectedDepartment = selected ? departments[selected.departmentIndex] ?? null : null;
   const selectedVehicle = selectedDepartment?.vehicles.find(({ id }) => id === selected?.vehicleId) ?? null;
@@ -60,6 +87,13 @@ export default function App() {
   const moveSheetVehicle = moveSheetDepartment?.vehicles.find(({ id }) => id === moveSheetSelection?.vehicleId) ?? null;
   const revisionDepartmentIndex = departments.findIndex(({ name }) => name === 'Revision Needed');
   const revisionDepartment = departments[revisionDepartmentIndex] ?? null;
+  const activeProductionExceptions = departments
+    .filter(({ name }) => name !== 'Revision Needed')
+    .flatMap(({ vehicles }) => vehicles.filter((vehicle) => vehicle.activeException?.active));
+  const managementExceptionVehicles = [...(revisionDepartment?.vehicles ?? []), ...activeProductionExceptions]
+    .filter((vehicle, index, all) => all.findIndex(({ id }) => id === vehicle.id) === index);
+  const managementExceptionsDepartment = revisionDepartment ? { ...revisionDepartment, vehicles: managementExceptionVehicles } : null;
+  const managementExceptionCount = managementExceptionVehicles.length;
   const revisionReviewVehicle = revisionDepartment?.vehicles.find(({ id }) => id === revisionReviewVehicleId) ?? null;
   const subletDenialRoutingVehicle = revisionDepartment?.vehicles.find(({ id }) => id === subletDenialRoutingVehicleId) ?? null;
   const exceptionCompletionDepartment = exceptionCompletionSelection ? departments[exceptionCompletionSelection.departmentIndex] ?? null : null;
@@ -100,13 +134,6 @@ export default function App() {
     floorRevealOpacity.stopAnimation();
   }, [floorRevealOpacity]);
 
-  const enterLobby = useCallback(() => {
-    setFloorMotionEnabled(false);
-    floorRevealOpacity.setValue(1);
-    setLobbyInteractive(true);
-    setScreen({ kind: 'lobby' });
-  }, [floorRevealOpacity]);
-
   const openLobbyDestination = useCallback((destination: 'checkin' | 'floor' | 'office') => {
     if (startupTimer.current) clearTimeout(startupTimer.current);
     setFloorMotionEnabled(false);
@@ -126,6 +153,11 @@ export default function App() {
     });
   }, [floorRevealOpacity]);
 
+  const openIntake = useCallback(() => {
+    setIntakeJobProfile((current) => current ?? createJobProfile());
+    openLobbyDestination('checkin');
+  }, [openLobbyDestination]);
+
   const returnToLobby = useCallback(() => {
     if (startupTimer.current) clearTimeout(startupTimer.current);
     setFloorMotionEnabled(false);
@@ -144,6 +176,48 @@ export default function App() {
     setToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2600);
+  };
+
+  const assignOfficeJob = (jobId: string, destination: ProductionDepartmentName, technicianId: string) => {
+    const job = unassignedJobs.find(({ id }) => id === jobId);
+    const technician = technicians.find(({ id }) => id === technicianId);
+    if (!job || !technician || technician.department !== destination) return;
+    const assignedAt = Date.now();
+    const status = defaultStartingStatuses[destination];
+    const assignedVehicle: Vehicle = {
+      id: job.vehicleId,
+      department: destination,
+      year: job.year,
+      make: job.make,
+      model: job.model,
+      color: job.color,
+      stockNumber: job.roNumber,
+      status,
+      statusColor: getStatusColor(status),
+      location: `${destination} assignment queue`,
+      timeInStage: '0 min',
+      lifecycleState: 'active_production',
+      productionStartedAt: assignedAt,
+      stageStartedAt: assignedAt,
+      timerState: {
+        category: destination === 'Parts Hold' ? 'parts_hold' : 'active_production',
+        categoryStartedAt: assignedAt,
+        activeProductionMs: 0,
+        partsHoldMs: 0,
+        revisionHoldMs: 0,
+      },
+      history: [{ id: `assigned-${job.vehicleId}-${assignedAt}`, type: 'job_assigned', occurredAt: assignedAt, toDepartment: destination, status, note: `Assigned to ${technician.name}` }],
+      priority: job.priority !== 'Standard',
+      assignedTechnicianId: technician.id,
+      assignedTechnicianName: technician.name,
+    };
+    setDepartments((current) => current.map((department) => {
+      const withoutVehicle = department.vehicles.filter(({ id }) => id !== job.vehicleId);
+      return department.name === destination ? { ...department, vehicles: [...withoutVehicle, assignedVehicle] } : { ...department, vehicles: withoutVehicle };
+    }));
+    setUnassignedJobs((current) => current.filter(({ id }) => id !== jobId));
+    setTechnicians((current) => current.map((item) => item.id === technicianId ? { ...item, activeJobs: item.activeJobs + 1 } : item));
+    showSuccess(`✓ ${job.make} ${job.model} assigned to ${destination}`);
   };
 
   const completeFacilityMovement = useCallback((movementId: number) => {
@@ -417,19 +491,19 @@ export default function App() {
         <Animated.View style={[styles.appScreen, { opacity: floorRevealOpacity }]}>
         <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
           <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-          {screen.kind !== 'entrance' && screen.kind !== 'floor' && screen.kind !== 'department' && screen.kind !== 'checkin' && screen.kind !== 'lobby' && screen.kind !== 'office' && !selected && <View style={styles.brandBar}>
+          {screen.kind !== 'floor' && screen.kind !== 'department' && screen.kind !== 'checkin' && screen.kind !== 'lobby' && screen.kind !== 'office' && !selected && <View style={styles.brandBar}>
             <View style={styles.brandMark}><View style={styles.markLine} /><View style={[styles.markLine, styles.markLineShort]} /><View style={styles.markLine} /></View>
             <Text style={styles.brand}>RECON OPUS</Text>
           </View>}
-          {screen.kind !== 'entrance' && screen.kind !== 'floor' && screen.kind !== 'department' && screen.kind !== 'checkin' && screen.kind !== 'lobby' && screen.kind !== 'office' && <View style={styles.globalNav}>
-            <Pressable onPress={() => setScreen({ kind: 'revision' })} accessibilityRole="tab" accessibilityState={{ selected: screen.kind === 'revision' }} style={[styles.globalNavItem, screen.kind === 'revision' && styles.globalNavItemActive]}><Text style={[styles.globalNavText, screen.kind === 'revision' && styles.globalNavTextActive]}>Production Exceptions</Text><View style={styles.revisionBadge}><Text style={styles.revisionBadgeText}>{revisionDepartment?.vehicles.length ?? 0}</Text></View></Pressable>
+          {screen.kind !== 'floor' && screen.kind !== 'department' && screen.kind !== 'checkin' && screen.kind !== 'lobby' && screen.kind !== 'office' && <View style={styles.globalNav}>
+            <Pressable onPress={() => setScreen({ kind: 'revision' })} accessibilityRole="tab" accessibilityState={{ selected: screen.kind === 'revision' }} style={[styles.globalNavItem, screen.kind === 'revision' && styles.globalNavItemActive]}><Text style={[styles.globalNavText, screen.kind === 'revision' && styles.globalNavTextActive]}>Production Exceptions</Text><View style={styles.revisionBadge}><Text style={styles.revisionBadgeText}>{managementExceptionCount}</Text></View></Pressable>
           </View>}
           <View style={styles.screen}>
-          {screen.kind === 'lobby' && <ShopLobbyScreen interactive={lobbyInteractive} onOpenIntake={() => openLobbyDestination('checkin')} onOpenProductionFloor={() => openLobbyDestination('floor')} onOpenOffice={() => openLobbyDestination('office')} />}
-          {screen.kind === 'office' && <OfficeScreen onBackToLobby={returnToLobby} />}
-          {screen.kind === 'floor' && <ProductionFloorScreen departments={departments} revisionCount={revisionWip} subletCount={sublets.length} motionEnabled={floorMotionEnabled} movement={lastMovement} onMovementComplete={completeFacilityMovement} onOpenDepartment={openDepartment} onBackToLobby={returnToLobby} onOpenRevisions={() => setScreen({ kind: 'revision' })} onOpenSublets={() => setScreen({ kind: 'sublets' })} onOpenHistory={() => setScreen({ kind: 'history' })} />}
-          {screen.kind === 'checkin' && <VehicleCheckInModule onExit={returnToLobby} />}
-          {screen.kind === 'revision' && revisionDepartment && <RevisionQueuePage department={revisionDepartment} width={width} scrollOffset={scrollPositions.current['Revision Needed'] ?? 0} onScrollOffsetChange={(offset) => { scrollPositions.current['Revision Needed'] = offset; }} onVehiclePress={(vehicle) => vehicle.activeSubletRequest?.status === 'denied_pending_routing' ? setSubletDenialRoutingVehicleId(vehicle.id) : setRevisionReviewVehicleId(vehicle.id)} onBackToFloor={() => setScreen({ kind: 'floor' })} />}
+          {screen.kind === 'lobby' && <ShopLobbyScreen contentVisible={lobbyContentVisible} interactive={lobbyInteractive && lobbyContentVisible} onOpenIntake={openIntake} onOpenProductionFloor={() => openLobbyDestination('floor')} onOpenOffice={() => openLobbyDestination('office')} />}
+          {screen.kind === 'office' && <OfficeScreen jobs={unassignedJobs} technicians={technicians} startingDepartments={productionSequence.filter((name) => name !== 'Entrance')} exceptionCount={managementExceptionCount} onBackToLobby={returnToLobby} onOpenExceptions={() => setScreen({ kind: 'revision' })} onAssign={assignOfficeJob} />}
+          {screen.kind === 'floor' && <ProductionFloorScreen departments={departments} revisionCount={managementExceptionCount} subletCount={sublets.length} motionEnabled={floorMotionEnabled} movement={lastMovement} onMovementComplete={completeFacilityMovement} onOpenDepartment={openDepartment} onBackToLobby={returnToLobby} onOpenRevisions={() => setScreen({ kind: 'revision' })} onOpenSublets={() => setScreen({ kind: 'sublets' })} onOpenHistory={() => setScreen({ kind: 'history' })} />}
+          {screen.kind === 'checkin' && intakeJobProfile && <VehicleCheckInModule onExit={returnToLobby} jobProfile={intakeJobProfile} onChangeJobProfile={setIntakeJobProfile} />}
+          {screen.kind === 'revision' && managementExceptionsDepartment && <RevisionQueuePage department={managementExceptionsDepartment} width={width} scrollOffset={scrollPositions.current['Revision Needed'] ?? 0} onScrollOffsetChange={(offset) => { scrollPositions.current['Revision Needed'] = offset; }} onVehiclePress={(vehicle) => vehicle.activeException?.active ? openVehicle(vehicle) : vehicle.activeSubletRequest?.status === 'denied_pending_routing' ? setSubletDenialRoutingVehicleId(vehicle.id) : setRevisionReviewVehicleId(vehicle.id)} onBackToFloor={() => setScreen({ kind: 'floor' })} />}
           {screen.kind === 'sublets' && <SubletsQueueScreen items={sublets} onBackToFloor={() => setScreen({ kind: 'floor' })} onAdvanceStatus={advanceSublet} />}
           {screen.kind === 'department' && currentQueue && <DepartmentPage
             department={currentQueue}
@@ -488,9 +562,6 @@ export default function App() {
         <SubletDenialRoutingSheet vehicle={subletDenialRoutingVehicle} recommended={deniedRecommendedDestination} destinations={productionSequence} onSelect={commitDeniedSubletRouting} onCancel={() => setSubletDenialRoutingVehicleId(null)} />
         </SafeAreaView>
         </Animated.View>
-        {(screen.kind === 'entrance' || screen.kind === 'lobby') && (
-          <EntranceScreen showDoors={screen.kind === 'entrance'} onEnterLobby={enterLobby} />
-        )}
         {toast && <ToastOverlay message={toast} />}
       </View>
     </SafeAreaProvider>
@@ -507,6 +578,7 @@ function ToastOverlay({ message }: { message: string }) {
 }
 
 const styles = StyleSheet.create({
+  startupRoot: { flex: 1, position: 'relative', backgroundColor: '#000000' },
   provider: { flex: 1, backgroundColor: colors.background },
   appRoute: { flex: 1, position: 'relative', backgroundColor: '#000000' },
   appScreen: { flex: 1 },

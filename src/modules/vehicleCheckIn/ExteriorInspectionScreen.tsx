@@ -63,8 +63,8 @@ export function ExteriorInspectionScreen({ vehicleId, findings, onChangeFindings
   return (
     <View style={styles.page}>
       <View style={styles.header}>
-        <Pressable onPress={onBack} accessibilityRole="button" style={({ pressed }) => [styles.back, pressed && styles.pressed]}><Text style={styles.backIcon}>‹</Text><Text style={styles.backText}>Vehicle Information</Text></Pressable>
-        <Text style={styles.step}>STEP 2</Text>
+        <Pressable onPress={onBack} accessibilityRole="button" style={({ pressed }) => [styles.back, pressed && styles.pressed]}><Text style={styles.backIcon}>‹</Text><Text style={styles.backText}>Job Profile</Text></Pressable>
+        <Text style={styles.step}>STEP 3</Text>
       </View>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>VEHICLE CHECK-IN</Text>
